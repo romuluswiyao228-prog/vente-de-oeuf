@@ -29,6 +29,7 @@ export interface SiteTexts {
   contact_phone: string
   contact_address: string
   whatsapp_number: string
+  whatsapp_order_note: string
   social_facebook: string
   social_instagram: string
   social_youtube: string
@@ -65,14 +66,20 @@ export interface OrderItem {
   price_fcfa: number
 }
 
+export type OrderFulfillment = 'livraison' | 'retrait'
+
 export interface Order {
   id: string
+  reference: string | null
   customer_name: string
   phone: string
   email: string
   address: string
   zone: string
+  fulfillment: OrderFulfillment
   items: OrderItem[]
+  subtotal_fcfa: number
+  delivery_fee_fcfa: number
   total_fcfa: number
   payment_method: string
   status: OrderStatus

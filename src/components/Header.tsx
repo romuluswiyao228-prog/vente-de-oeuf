@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
+import { useCart } from '../lib/cart'
 import { useSiteTexts } from '../lib/store'
 
 const links = [
@@ -11,6 +12,7 @@ const links = [
 
 export default function Header() {
   const texts = useSiteTexts()
+  const { count } = useCart()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
@@ -56,16 +58,19 @@ export default function Header() {
           ))}
         </nav>
 
-        {texts.whatsapp_number && (
-          <a
-            href={`https://wa.me/${texts.whatsapp_number.replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn hidden rounded-full bg-terra px-5 py-2.5 text-sm font-semibold text-cream shadow-card hover:bg-terra-dark sm:inline-block"
-          >
-            Commander sur WhatsApp
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          <CartButton count={count} className="hidden sm:grid" />
+          {texts.whatsapp_number && (
+            <a
+              href={`https://wa.me/${texts.whatsapp_number.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn hidden rounded-full bg-terra px-5 py-2.5 text-sm font-semibold text-cream shadow-card hover:bg-terra-dark sm:inline-block"
+            >
+              Commander sur WhatsApp
+            </a>
+          )}
+        </div>
 
         <button
           className="btn grid h-10 w-10 place-items-center rounded-full text-bark hover:bg-sand lg:hidden"
@@ -90,6 +95,7 @@ export default function Header() {
               {l.label}
             </NavLink>
           ))}
+          <CartButton count={count} className="mt-3 sm:hidden" />
           {texts.whatsapp_number && (
             <a
               href={`https://wa.me/${texts.whatsapp_number.replace(/\D/g, '')}`}
@@ -103,6 +109,26 @@ export default function Header() {
         </nav>
       )}
     </header>
+  )
+}
+
+function CartButton({ count, className = '' }: { count: number; className?: string }) {
+  return (
+    <Link
+      to="/panier"
+      aria-label={count > 0 ? `Panier, ${count} article${count > 1 ? 's' : ''}` : 'Panier'}
+      className={`btn relative grid h-10 w-10 place-items-center rounded-full text-bark hover:bg-sand ${className}`}
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 7h12l1.2 12.2a1.5 1.5 0 0 1-1.5 1.8H6.3a1.5 1.5 0 0 1-1.5-1.8L6 7z" />
+        <path d="M9 10V6a3 3 0 0 1 6 0v4" />
+      </svg>
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-terra px-1 text-[11px] font-bold text-cream">
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </Link>
   )
 }
 

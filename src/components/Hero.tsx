@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { canAutoplayVideo } from '../lib/perf'
 import type { SiteTexts } from '../lib/types'
 
 interface HeroProps {
@@ -7,18 +9,33 @@ interface HeroProps {
 }
 
 export default function Hero({ texts, videoUrl }: HeroProps) {
+  // Pas d'autoplay sur connexions lentes (saveData) ni en reduced-motion :
+  // on garde le fond terracotta uni.
+  const [autoplay] = useState(canAutoplayVideo)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const showVideo = !!videoUrl && autoplay && failedUrl !== videoUrl
+  const videoType = videoUrl?.toLowerCase().endsWith('.mp4') ? 'video/mp4' : undefined
+
   return (
     <section className="relative flex min-h-[92svh] items-center overflow-hidden bg-terra">
-      {videoUrl && (
+      {showVideo && videoUrl && (
         <video
+          key={videoUrl}
+          ref={(el) => {
+            if (!el) return
+            el.muted = true
+            void el.play().catch(() => {})
+          }}
           className="absolute inset-0 h-full w-full object-cover"
-          autoPlay
+          autoPlay={autoplay}
           muted
           loop
           playsInline
+          preload="metadata"
           aria-hidden="true"
+          onError={() => setFailedUrl(videoUrl)}
         >
-          <source src={videoUrl} />
+          <source src={videoUrl} type={videoType} />
         </video>
       )}
       <div className="absolute inset-0 bg-bark/45" aria-hidden="true" />
@@ -30,7 +47,7 @@ export default function Hero({ texts, videoUrl }: HeroProps) {
               <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 text-terra-soft" fill="currentColor" aria-hidden="true">
                 <path d="M10 1.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L10 14.9l-5.3 2.7 1-5.8L1.5 7.7l5.9-.9L10 1.5z" />
               </svg>
-              Éleveurs vérifiés
+              Élevage en plein air
             </span>
             <span className="text-cream/40">•</span>
             <span className="flex items-center gap-1.5">
@@ -67,10 +84,7 @@ export default function Hero({ texts, videoUrl }: HeroProps) {
           </div>
 
           <p className="reveal is-visible mt-8 text-sm text-cream/70">
-            Vous élevez ?{' '}
-            <Link to="/annonces" className="font-semibold text-terra-soft underline-offset-4 hover:underline">
-              Découvrez nos produits
-            </Link>
+            Des produits sélectionnés avec soin, livrés à Lomé et dans tout le Togo.
           </p>
         </div>
       </div>

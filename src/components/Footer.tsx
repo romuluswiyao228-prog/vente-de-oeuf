@@ -17,7 +17,6 @@ const legal = [
   { to: '/legal/conditions-vente', label: 'Conditions de vente' },
   { to: '/legal/conditions-utilisation', label: "Conditions d'utilisation" },
   { to: '/legal/reglementation-vendeur', label: 'Réglementation vendeur' },
-  { to: '/legal/charte-avis', label: 'Charte des avis' },
   { to: '/legal/cookies', label: 'Cookies' },
 ]
 
@@ -54,7 +53,7 @@ export default function Footer() {
           <div>
             <Link to="/" className="flex items-center gap-2.5">
               {logoUrl ? (
-                <img src={logoUrl} alt={texts.site_name} className="h-10 w-10 rounded-2xl object-cover" />
+                <img src={logoUrl} alt={texts.site_name} width={40} height={40} className="h-10 w-10 rounded-2xl object-cover" />
               ) : (
                 <span className="grid h-10 w-10 place-items-center rounded-2xl bg-terra text-cream">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">

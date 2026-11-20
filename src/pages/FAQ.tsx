@@ -1,9 +1,39 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Reveal from '../components/Reveal'
-import { faqs } from '../data/catalog'
+import { useSiteTexts } from '../lib/store'
+import { useSeo } from '../lib/seo'
+
+const faqs = [
+  {
+    q: 'Comment passer commande ?',
+    a: 'Sur chaque fiche produit, cliquez sur « Commander sur WhatsApp ». Votre message s’ouvre avec le produit, la quantité et le prix déjà remplis — il ne reste qu’à envoyer.',
+  },
+  {
+    q: 'Quels sont les moyens de paiement ?',
+    a: 'Mobile Money (T-Money, Flooz) ou paiement à la livraison, en espèces. Vous choisissez au moment de la commande.',
+  },
+  {
+    q: 'Livrez-vous partout au Togo ?',
+    a: 'Oui : livraison à Lomé et dans les principales villes du Togo. Des frais de livraison peuvent s’appliquer selon la zone — ils sont indiqués sur chaque fiche produit. Le retrait sur place est aussi possible.',
+  },
+  {
+    q: 'Les œufs sont-ils fertiles ?',
+    a: 'Oui, pour la catégorie « Œufs fécondés », chaque lot est fertilisé et la date de ponte est indiquée. Un taux d’éclosion n’est toutefois jamais garanti à 100 % — c’est le propre de l’incubation.',
+  },
+  {
+    q: 'Comment se passe la livraison des animaux vivants ?',
+    a: 'Les poussins et volailles sont remis en retrait sur place ou livrés selon la zone, dans des conditions adaptées. Contactez-nous sur WhatsApp avant de commander pour convenir des modalités.',
+  },
+  {
+    q: 'Proposez-vous des couveuses et du matériel ?',
+    a: 'Oui, retrouvez dans la catégorie « Matériel » les couveuses, mangeoires et accessoires pour bien démarrer votre basse-cour.',
+  },
+]
 
 export default function FAQ() {
+  useSeo('FAQ')
+  const texts = useSiteTexts()
   const [open, setOpen] = useState<number | null>(0)
 
   return (
@@ -11,7 +41,7 @@ export default function FAQ() {
       <PageHeader
         eyebrow="Questions fréquentes"
         title="FAQ"
-        subtitle="Tout ce qu’il faut savoir avant de commander vos premiers œufs fécondés."
+        subtitle={`Tout ce qu’il faut savoir avant de commander sur ${texts.site_name}.`}
       />
       <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
         <div className="space-y-4">

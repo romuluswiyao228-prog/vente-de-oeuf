@@ -1,32 +1,47 @@
-# React + TypeScript + Vite
+# La Basse-Cour
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Site de vente d'œufs fécondés, de volailles et de matériel — Togo.
+React + Vite + TypeScript + Tailwind CSS v4 + Supabase.
 
-Currently, two official plugins are available:
+## Démarrage
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Configuration Supabase
+
+1. Créez un projet sur [supabase.com](https://supabase.com).
+2. Dans **SQL Editor**, exécutez `supabase/schema.sql` (crée les tables, les policies RLS, le bucket Storage `media` et les données initiales).
+3. Créez `.env` à la racine :
+
+```
+VITE_SUPABASE_URL=https://votre-projet.supabase.co
+VITE_SUPABASE_ANON_KEY=votre-cle-anon
+```
+
+4. Pour devenir administrateur : créez un compte via **Authentication → Users**, puis exécutez dans le SQL Editor :
+
+```sql
+update public.profiles set role = 'admin' where id = '<USER_ID>';
+```
+
+L'espace admin est accessible sur `/admin`.
+
+## Structure
+
+- `src/pages/` — pages publiques + `admin/` (onglets Produits, Médias, Textes, Livraison & Paiement, Commandes, Blog)
+- `src/components/` — Header, Footer, Hero, Marquee, ProductCard, SmartImg (fallback terracotta), etc.
+- `src/lib/store.ts` — hooks de lecture + mutations admin
+- `src/lib/types.ts` — types et constantes (types de produits, statuts de commande)
+- `supabase/schema.sql` — schéma complet de la base
+
+## Commandes
+
+```bash
+npm run dev      # serveur de dev
+npm run build    # build de production
+npm run lint     # oxlint
+npm run preview  # prévisualise le build
+```

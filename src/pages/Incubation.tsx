@@ -1,8 +1,7 @@
 import PageHeader from '../components/PageHeader'
 import Reveal from '../components/Reveal'
-import SmartImg from '../components/SmartImg'
-import { img } from '../lib/media'
 import { Link } from 'react-router-dom'
+import { useSeo } from '../lib/seo'
 
 const steps = [
   {
@@ -33,6 +32,7 @@ const steps = [
 ]
 
 export default function Incubation() {
+  useSeo('Incubation')
   return (
     <>
       <PageHeader
@@ -55,16 +55,16 @@ export default function Incubation() {
           </ol>
         </Reveal>
         <Reveal delay={150} className="space-y-4">
-          {[111, 112].map((s) => (
-            <div key={s} className="overflow-hidden rounded-[2rem] shadow-card">
-              <SmartImg src={img('chicks hatching', s)} seed={s} alt="Poussins à l’éclosion" className="aspect-[4/3] w-full object-cover" />
-            </div>
-          ))}
+          <div className="flex aspect-[4/3] items-center justify-center rounded-[2rem] bg-terra-soft shadow-card">
+            <svg viewBox="0 0 64 64" className="h-20 w-20 text-terra/50" fill="currentColor" aria-hidden="true">
+              <path d="M32 8c8 0 15 11.5 15 21.5S40 52 32 52s-15-9.5-15-22.5S24 8 32 8z" />
+            </svg>
+          </div>
           <Link
-            to="/annonces"
+            to="/annonces?type=oeufs"
             className="btn block rounded-3xl bg-terra px-6 py-5 text-center text-sm font-semibold text-cream hover:bg-terra-dark"
           >
-            Trouver des œufs fertiles →
+            Voir les œufs fertiles →
           </Link>
         </Reveal>
       </section>

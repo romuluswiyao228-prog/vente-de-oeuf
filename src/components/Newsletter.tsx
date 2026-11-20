@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { SITE } from '../data/site'
+import { useSiteTexts } from '../lib/store'
 
 export default function Newsletter() {
+  const texts = useSiteTexts()
   const [email, setEmail] = useState('')
   const [done, setDone] = useState(false)
 
@@ -17,11 +18,11 @@ export default function Newsletter() {
           Les bonnes nouvelles du poulailler
         </h2>
         <p className="mt-3 text-bark-soft">
-          Nouvelles annonces, conseils d’éleveurs et bons plans — une fois par mois, jamais plus.
+          Nouveaux produits, conseils d’élevage et bons plans — une fois par mois, jamais plus.
         </p>
         {done ? (
           <p className="mt-8 rounded-2xl bg-cream px-6 py-4 font-medium text-leaf-dark shadow-card">
-            Merci ! Vous êtes inscrit·e à la newsletter de {SITE.name}.
+            Merci ! Vous êtes inscrit·e à la newsletter de {texts.site_name}.
           </p>
         ) : (
           <form onSubmit={submit} className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row">
@@ -34,7 +35,7 @@ export default function Newsletter() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="votre@email.fr"
+              placeholder="votre@email.com"
               className="btn flex-1 rounded-full border border-line bg-cream px-5 py-3 text-sm text-bark placeholder:text-bark-soft/60 focus:border-terra focus:outline-none"
             />
             <button

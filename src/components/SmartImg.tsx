@@ -1,6 +1,6 @@
 import { useState, type ImgHTMLAttributes } from 'react'
 
-interface SmartImgProps extends ImgHTMLAttributes<HTMLImageElement> {
+interface SmartImgProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** URL réelle issue de Supabase Storage. Si absente ou en erreur : fond uni terracotta. */
   src?: string | null
 }

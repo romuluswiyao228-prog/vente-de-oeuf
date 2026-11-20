@@ -1,38 +1,31 @@
 import PageHeader from '../components/PageHeader'
 import Reveal from '../components/Reveal'
-import { SITE } from '../data/site'
+import { useSiteTexts } from '../lib/store'
+import { useSeo } from '../lib/seo'
 
 const pages: Record<string, { title: string; body: string[] }> = {
   'conditions-vente': {
     title: 'Conditions de vente',
     body: [
-      'Les présentes conditions régissent les ventes conclues sur ' + SITE.name + ' entre un acheteur et un éleveur vérifié.',
-      'Le paiement est encaissé par la plateforme et reversé à l’éleveur uniquement après confirmation de réception du colis par l’acheteur.',
-      'En cas de non-conformité (œufs non fécondés, mortalité constatée à la livraison), une réclamation peut être ouverte sous 48 h avec photos à l’appui.',
+      'Les présentes conditions régissent les ventes conclues sur le site. Les commandes se font via WhatsApp et sont confirmées manuellement.',
+      'Le paiement s’effectue par Mobile Money (T-Money, Flooz) ou en espèces à la livraison, selon l’option choisie.',
+      'En cas de produit non conforme, contactez-nous sous 24 h avec des photos. Un échange ou un remboursement peut être proposé.',
     ],
   },
   'conditions-utilisation': {
-    title: 'Conditions d’utilisation',
+    title: "Conditions d'utilisation",
     body: [
-      'En utilisant ' + SITE.name + ', vous acceptez de fournir des informations exactes et de respecter les animaux et les personnes.',
-      'Sont interdites : les annonces mensongères, la vente d’animaux malades ou protégés, et toute forme de fraude.',
-      'La plateforme se réserve le droit de suspendre tout compte ne respectant pas ces règles.',
+      'En utilisant le site, vous acceptez de fournir des informations exactes lors de vos commandes.',
+      'Sont interdites : les commandes frauduleuses, le détournement du service et toute tentative de nuire au site.',
+      'Nous nous réservons le droit de refuser ou d’annuler toute commande suspecte.',
     ],
   },
   'reglementation-vendeur': {
     title: 'Réglementation vendeur',
     body: [
-      'Tout éleveur doit respecter la réglementation en vigueur : enregistrement, normes sanitaires et bien-être animal.',
-      'La vente d’animaux vivants est soumise à des règles spécifiques (certificat, transport, âge minimal).',
-      'Les œufs destinés à l’incubation doivent provenir de reproducteurs sains et être vendus avec la date de ponte.',
-    ],
-  },
-  'charte-avis': {
-    title: 'Charte des avis',
-    body: [
-      'Les avis sont publiés uniquement par des acheteurs ayant reçu leur commande.',
-      'Chaque avis est modéré : insultes, spam et contenu non lié à la commande sont supprimés.',
-      'Les éleveurs peuvent répondre publiquement à chaque avis.',
+      'La vente d’animaux vivants et d’œufs est soumise à la réglementation en vigueur au Togo.',
+      'Les produits sont vendus avec la mention « vendus pour la consommation / l’élevage », selon le cas.',
+      'Pour toute question réglementaire, contactez-nous directement.',
     ],
   },
   cookies: {
@@ -46,7 +39,9 @@ const pages: Record<string, { title: string; body: string[] }> = {
 }
 
 export default function LegalPage({ slug }: { slug: string }) {
+  const texts = useSiteTexts()
   const page = pages[slug]
+  useSeo(page?.title)
 
   if (!page) {
     return (
@@ -67,7 +62,7 @@ export default function LegalPage({ slug }: { slug: string }) {
             </p>
           ))}
           <p className="mt-8 border-t border-line pt-6 text-xs text-bark-soft">
-            Dernière mise à jour : novembre 2025 — {SITE.name}
+            Dernière mise à jour : novembre 2026 — {texts.site_name}
           </p>
         </Reveal>
       </section>

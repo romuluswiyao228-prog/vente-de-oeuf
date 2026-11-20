@@ -1,18 +1,33 @@
 import { useEffect, useState } from 'react'
 
 /** Écran de chargement initial : œuf qui balance + poussin qui pop, puis fondu de sortie. */
+const SESSION_KEY = 'lb-loader-seen'
+
 export default function Loader() {
-  const [visible, setVisible] = useState(true)
+  // N'afficher le loader qu'une fois par session (sessionStorage)
+  const [visible, setVisible] = useState(() => {
+    try {
+      return !sessionStorage.getItem(SESSION_KEY)
+    } catch {
+      return true
+    }
+  })
   const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    if (!visible) return
     const t1 = setTimeout(() => setLeaving(true), 1400)
     const t2 = setTimeout(() => setVisible(false), 1900)
     return () => {
       clearTimeout(t1)
       clearTimeout(t2)
     }
-  }, [])
+  }, [visible])
 
   if (!visible) return null
 

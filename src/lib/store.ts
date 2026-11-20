@@ -6,6 +6,7 @@ import type {
   MediaItem,
   MediaKind,
   Order,
+  OrderItem,
   OrderStatus,
   PaymentMethod,
   Product,
@@ -32,21 +33,9 @@ export function orderMessage(product: Product, quantity: number, texts: SiteText
     `Je souhaite commander :`,
     `• ${product.name} — ${quantity} × ${formatPrice(product.price_fcfa)} = ${formatPrice(total)}`,
     ``,
+    texts.whatsapp_order_note,
     `Merci de me confirmer la disponibilité et les modalités de livraison/paiement.`,
   ].join('\n')
-}
-
-async function uploadMedia(file: File, kind: string): Promise<string | null> {
-  if (!supabase) return null
-  const ext = file.name.split('.').pop() || 'jpg'
-  const path = `${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-  const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true })
-  if (error) {
-    console.error('Upload error:', error)
-    return null
-  }
-  const { data } = supabase.storage.from('media').getPublicUrl(path)
-  return data.publicUrl
 }
 
 /* --------------------------------- Hooks --------------------------------- */
@@ -89,7 +78,8 @@ export function useMedia(kind?: MediaKind): MediaItem[] {
     if (!supabase) return []
     let q = supabase.from('media').select('*').eq('active', true).order('sort_order')
     if (kind) q = q.eq('kind', kind)
-    const { data } = await q
+    const { data, error } = await q
+    if (error) console.warn('useMedia:', error.message)
     return (data ?? []) as MediaItem[]
   }, [kind])
   return data ?? []
@@ -156,21 +146,30 @@ export function usePaymentMethods(): PaymentMethod[] {
 
 export function useAdminSession() {
   const [session, setSession] = useState<{ user: { id: string; email?: string } } | null>(null)
+  const [sessionReady, setSessionReady] = useState(false)
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!supabase) {
+      setSessionReady(true)
       setIsAdmin(false)
       return
     }
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setSessionReady(true)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      setSessionReady(true)
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
+    if (!sessionReady) return
     if (!supabase || !session) {
-      setIsAdmin(session ? false : null)
+      setIsAdmin(false)
       return
     }
     supabase
@@ -179,7 +178,7 @@ export function useAdminSession() {
       .eq('id', session.user.id)
       .maybeSingle()
       .then(({ data }) => setIsAdmin(data?.role === 'admin'))
-  }, [session])
+  }, [session, sessionReady])
 
   return { session, isAdmin, configured: isSupabaseConfigured }
 }
@@ -194,21 +193,115 @@ export async function adminSignOut() {
   await supabase?.auth.signOut()
 }
 
-export async function uploadSiteMedia(file: File, kind: MediaKind): Promise<string | null> {
-  return uploadMedia(file, kind)
+/**
+ * Inscription admin : si aucun admin n'existe encore, le premier compte
+ * créé devient automatiquement administrateur.
+ */
+export async function adminSignUp(email: string, password: string, fullName: string) {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { full_name: fullName } },
+  })
+  if (error) throw error
+
+  const userId = data.user?.id
+  if (!userId) return 'confirm' // e-mail de confirmation requis
+
+  // claim_admin() est security definer : le comptage des admins
+  // n'est pas faussé par la RLS (seul le premier compte devient admin)
+  const { data: claimed } = await supabase.rpc('claim_admin')
+  return claimed ? 'ok' : 'member'
 }
 
-export async function addMedia(kind: MediaKind, url: string) {
-  if (!supabase) return
-  const { data: last } = await supabase.from('media').select('sort_order').order('sort_order', { ascending: false }).limit(1)
-  await supabase.from('media').insert({ kind, url, sort_order: (last?.[0]?.sort_order ?? 0) + 1 })
+export async function uploadSiteMedia(file: File, kind: MediaKind): Promise<string> {
+  return uploadFile(file, kind)
+}
+
+/** Upload vers le bucket Storage "media". Lève une erreur explicite en cas d'échec. */
+export async function uploadFile(file: File, folder: string): Promise<string> {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error } = await supabase.storage
+    .from('media')
+    .upload(path, file, { upsert: true, contentType: file.type || undefined })
+  if (error) throw new Error(`Envoi refusé : ${error.message}`)
+  const { data } = supabase.storage.from('media').getPublicUrl(path)
+  return data.publicUrl
+}
+
+/** Insère une ligne dans la table media (active par défaut) et la retourne. */
+export async function addMedia(kind: MediaKind, url: string): Promise<MediaItem> {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { data: last } = await supabase
+    .from('media')
+    .select('sort_order')
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  const { data, error } = await supabase
+    .from('media')
+    .insert({ kind, url, active: true, sort_order: (last?.[0]?.sort_order ?? 0) + 1 })
+    .select()
+    .single()
+  if (error) throw new Error(`Enregistrement refusé : ${error.message}`)
+  return data as MediaItem
 }
 
 export async function deleteMedia(id: string, url: string) {
-  if (!supabase) return
-  await supabase.from('media').delete().eq('id', id)
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { error } = await supabase.from('media').delete().eq('id', id)
+  if (error) throw new Error(`Suppression refusée : ${error.message}`)
   const path = url.split('/media/')[1]
   if (path) await supabase.storage.from('media').remove([path])
+}
+
+export async function setMediaActive(id: string, active: boolean) {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { error } = await supabase.from('media').update({ active }).eq('id', id)
+  if (error) throw new Error(`Mise à jour refusée : ${error.message}`)
+}
+
+export interface MediaTestResult {
+  label: string
+  ok: boolean
+  detail: string
+}
+
+/** Vérifie que toute la chaîne médias fonctionne (bucket, droits, table). */
+export async function testMediaAccess(): Promise<MediaTestResult[]> {
+  if (!supabase) {
+    return [{ label: 'Supabase configuré', ok: false, detail: 'Variables VITE_SUPABASE_* manquantes' }]
+  }
+  const results: MediaTestResult[] = []
+
+  const { error: tableErr } = await supabase.from('media').select('id', { head: true }).limit(1)
+  results.push({
+    label: 'Lecture publique de la table media',
+    ok: !tableErr,
+    detail: tableErr?.message ?? 'OK',
+  })
+
+  const { error: listErr } = await supabase.storage.from('media').list('', { limit: 1 })
+  results.push({
+    label: 'Bucket media accessible en lecture',
+    ok: !listErr,
+    detail: listErr?.message ?? 'OK',
+  })
+
+  const probe = `__test_${Date.now()}.txt`
+  const { error: writeErr } = await supabase.storage
+    .from('media')
+    .upload(probe, new File(['test'], probe, { type: 'text/plain' }), { upsert: true })
+  if (writeErr) {
+    results.push({ label: "Droit d'écriture admin (Storage)", ok: false, detail: writeErr.message })
+  } else {
+    await supabase.storage.from('media').remove([probe])
+    results.push({ label: "Droit d'écriture admin (Storage)", ok: true, detail: 'OK' })
+  }
+
+  return results
 }
 
 export async function reorderMedia(id: string, dir: -1 | 1, kind: MediaKind) {
@@ -288,5 +381,155 @@ export async function saveTexts(values: Record<string, string>) {
 
 export async function updateOrderStatus(id: string, status: OrderStatus) {
   if (!supabase) return
+  // Le stock n'est décrémenté qu'à la première confirmation (nouvelle → confirmée)
+  if (status === 'confirmee') {
+    const { data: order } = await supabase.from('orders').select('status, items').eq('id', id).maybeSingle()
+    if (order && order.status === 'nouvelle' && Array.isArray(order.items)) {
+      for (const item of order.items as OrderItem[]) {
+        if (!item.product_id || !item.quantity) continue
+        const { data: product } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', item.product_id)
+          .maybeSingle()
+        if (product) {
+          await supabase
+            .from('products')
+            .update({ stock: Math.max(0, product.stock - item.quantity) })
+            .eq('id', item.product_id)
+        }
+      }
+    }
+  }
   await supabase.from('orders').update({ status }).eq('id', id)
+}
+
+/* ------------------------- Mutations admin (suite) ------------------------ */
+
+export async function upsertProduct(p: Partial<Product>) {
+  if (!supabase) return null
+  if (p.id) {
+    const { error } = await supabase.from('products').update(p).eq('id', p.id)
+    if (error) throw error
+    return p.id
+  }
+  const { data, error } = await supabase.from('products').insert({
+    name: '',
+    type: 'oeufs',
+    price_fcfa: 0,
+    stock: 0,
+    status: 'actif',
+    featured: false,
+    images: [],
+    description: '',
+    ...p,
+  }).select('id').single()
+  if (error) throw error
+  return data.id as string
+}
+
+export async function deleteProduct(id: string, imageUrls: string[]) {
+  if (!supabase) return
+  await supabase.from('products').delete().eq('id', id)
+  const paths = imageUrls.map((u) => u.split('/media/')[1]).filter(Boolean)
+  if (paths.length) await supabase.storage.from('media').remove(paths)
+}
+
+export async function saveZone(z: Partial<DeliveryZone>) {
+  if (!supabase) return
+  if (z.id) {
+    await supabase.from('delivery_zones').update(z).eq('id', z.id)
+  } else {
+    await supabase.from('delivery_zones').insert({ fee_fcfa: 0, active: true, sort_order: 99, ...z })
+  }
+}
+
+export async function deleteZone(id: string) {
+  if (!supabase) return
+  await supabase.from('delivery_zones').delete().eq('id', id)
+}
+
+export async function savePayment(p: Partial<PaymentMethod>) {
+  if (!supabase || !p.id) return
+  await supabase.from('payment_methods').update({ active: p.active, label: p.label, details: p.details }).eq('id', p.id)
+}
+
+export async function upsertBlogPost(p: Partial<BlogPost>) {
+  if (!supabase) return null
+  const slug =
+    p.slug ||
+    (p.title ?? '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') ||
+    `article-${Date.now()}`
+  const payload = { ...p, slug }
+  if (p.id) {
+    const { error } = await supabase.from('blog_posts').update(payload).eq('id', p.id)
+    if (error) throw error
+    return p.id
+  }
+  const { data, error } = await supabase.from('blog_posts').insert({
+    excerpt: '',
+    content: '',
+    image_url: null,
+    published: true,
+    ...payload,
+  }).select('id').single()
+  if (error) throw error
+  return data.id as string
+}
+
+/* ------------------------------ Commandes -------------------------------- */
+
+export interface CreateOrderInput {
+  customer_name: string
+  phone: string
+  email?: string
+  fulfillment: 'livraison' | 'retrait'
+  zone_id?: string | null
+  address?: string
+  payment_method?: string
+  note?: string
+  /** Uniquement product_id + quantité : prix et stock sont recalculés en base. */
+  items: { product_id: string; quantity: number }[]
+}
+
+export interface CreatedOrder {
+  id: string
+  reference: string
+  subtotal_fcfa: number
+  delivery_fee_fcfa: number
+  total_fcfa: number
+  fulfillment: 'livraison' | 'retrait'
+  zone: string
+  items: OrderItem[]
+}
+
+export async function createOrder(input: CreateOrderInput): Promise<CreatedOrder> {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { data, error } = await supabase.rpc('create_order', {
+    p_customer_name: input.customer_name,
+    p_phone: input.phone,
+    p_email: input.email ?? '',
+    p_fulfillment: input.fulfillment,
+    p_zone_id: input.fulfillment === 'livraison' ? input.zone_id ?? null : null,
+    p_address: input.address ?? '',
+    p_payment_method: input.payment_method ?? '',
+    p_note: input.note ?? '',
+    p_items: input.items,
+  })
+  if (error) throw error
+  return data as CreatedOrder
+}
+
+export async function deleteBlogPost(id: string, imageUrl?: string | null) {
+  if (!supabase) return
+  await supabase.from('blog_posts').delete().eq('id', id)
+  if (imageUrl) {
+    const path = imageUrl.split('/media/')[1]
+    if (path) await supabase.storage.from('media').remove([path])
+  }
 }
