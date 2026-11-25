@@ -1,17 +1,19 @@
 import { Link, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import ProductCard from '../components/ProductCard'
-import { useProducts } from '../lib/store'
+import { useHiddenProductTypes, useProducts } from '../lib/store'
 import { useSeo } from '../lib/seo'
 import { PRODUCT_TYPES, type ProductType } from '../lib/types'
 
 export default function CategoryPage() {
   const { slug } = useParams()
   const type = PRODUCT_TYPES.find((t) => t.value === slug)
+  const hiddenTypes = useHiddenProductTypes()
   useSeo(type?.label)
   const products = useProducts(slug && PRODUCT_TYPES.some((t) => t.value === slug) ? (slug as ProductType) : undefined)
 
-  if (!type) {
+  // Un type masqué sur le site public est introuvable comme une catégorie inexistante.
+  if (!type || hiddenTypes.includes(type.value)) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-24 text-center">
         <h1 className="font-display text-3xl font-semibold text-bark">Catégorie introuvable</h1>

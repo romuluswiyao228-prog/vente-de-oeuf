@@ -109,8 +109,9 @@ export default function Confirmation() {
               {order.payment_details ? ` — ${order.payment_details}` : ''}
             </p>
             <p className="mt-3 text-xs leading-relaxed text-bark-soft">
-              {texts.site_name} vous contactera pour confirmer votre commande et vous indiquer la
-              marche à suivre pour le paiement.
+              {order.payment_method === 'livraison'
+                ? `${texts.site_name} vous contactera pour confirmer votre commande et vous indiquer la marche à suivre pour le paiement.`
+                : 'Ta commande sera confirmée dès réception de ton paiement.'}
             </p>
           </div>
 

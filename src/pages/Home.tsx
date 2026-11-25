@@ -10,16 +10,20 @@ import SectionHeading from '../components/SectionHeading'
 import ProductCard from '../components/ProductCard'
 import Newsletter from '../components/Newsletter'
 import SmartImg from '../components/SmartImg'
+import Skeleton, { BlogCardSkeleton, ProductCardSkeleton } from '../components/Skeleton'
 import {
+  resourceNames,
   useBlogPosts,
   useDeliveryZones,
+  useHiddenProductTypes,
   useMedia,
   usePaymentMethods,
   useProducts,
+  useResourceLoaded,
   useSiteTexts,
 } from '../lib/store'
 import { formatPrice } from '../lib/store'
-import { PRODUCT_TYPES, type ProductType } from '../lib/types'
+import type { ProductType } from '../lib/types'
 
 function Dot() {
   return <span className="mx-6 text-terra-soft/70">✦</span>
@@ -54,84 +58,121 @@ export default function Home() {
   const zones = useDeliveryZones()
   const payments = usePaymentMethods()
 
-  const counts = Object.fromEntries(
-    PRODUCT_TYPES.map((t) => [t.value, products.filter((p) => p.type === t.value).length]),
-  ) as Record<ProductType, number>
+  // État « prêt » par ressource : pilote les squelettes (première visite sans cache).
+  const textsReady = useResourceLoaded(resourceNames.texts)
+  const productsReady = useResourceLoaded(resourceNames.products())
+  const blogReady = useResourceLoaded(resourceNames.blogPosts)
+  const zonesReady = useResourceLoaded(resourceNames.zones)
+  const paymentsReady = useResourceLoaded(resourceNames.payments)
 
   const marqueeItems = texts.marquee.split('|').map((s) => s.trim()).filter(Boolean)
   const firstOeuf = oeufs[0]
   const firstAnimal = animals[0]
+
+  // Visibilité des types : les sections animaux/matériel disparaissent d'elles-mêmes
+  // (leurs produits sont filtrés), la carte « Animaux vivants » de « Par envie » est masquée.
+  const hiddenTypes = useHiddenProductTypes()
+  const animalTypesVisible = (['poules', 'poussins', 'canards'] as ProductType[]).some(
+    (t) => !hiddenTypes.includes(t),
+  )
+  const materielVisible = !hiddenTypes.includes('materiel')
+
+  // Races des œufs publiés : une carte par race (premier produit + nombre).
+  const races = Array.from(new Set(oeufs.map((p) => p.race?.trim()).filter((r): r is string => Boolean(r))))
+    .map((race) => ({ race, products: oeufs.filter((p) => p.race?.trim() === race) }))
+    .sort((a, b) => b.products.length - a.products.length)
+
+  // « Par envie » : la carte Animaux vivants est remplacée par Incubation tant que les types sont masqués.
+  const envieCards = [
+    ...(!hiddenTypes.includes('oeufs')
+      ? [{
+          to: '/annonces',
+          title: 'Œufs fécondés',
+          text: 'Des lots calibrés, marqués à la date de ponte, prêts pour votre couveuse.',
+          image: firstOeuf?.images[0],
+        }]
+      : []),
+    ...(animalTypesVisible
+      ? [{
+          to: '/annonces',
+          title: 'Animaux vivants',
+          text: 'Volailles élevées en plein air, à emporter ou en livraison.',
+          image: firstAnimal?.images[0],
+        }]
+      : [{
+          to: '/incubation',
+          title: 'Incubation',
+          text: 'Le guide pas à pas pour faire éclore vos œufs fertiles.',
+          image: firstOeuf?.images[0],
+        }]),
+  ]
 
   const deliveryText = zones.length > 0 ? zones.map((z) => z.name).join(', ') : 'Togo'
 
   return (
     <>
       {/* 1. Bandeau défilant */}
-      {marqueeItems.length > 0 && (
-        <Marquee className="bg-terra py-2.5 text-cream">
-          <span className="flex items-center px-6 text-[13px] font-medium tracking-wide">
-            {marqueeItems.map((item, i) => (
-              <span key={i} className="flex items-center">
-                {i > 0 && <Dot />}
-                {i % 2 === 0 ? <strong className="font-bold">{item}</strong> : <em className="italic">{item}</em>}
-              </span>
-            ))}
-          </span>
-        </Marquee>
+      {!textsReady ? (
+        <div className="bg-terra py-2.5" aria-hidden="true">
+          <Skeleton className="mx-auto h-3 w-64 bg-cream/25" />
+        </div>
+      ) : (
+        marqueeItems.length > 0 && (
+          <Marquee className="bg-terra py-2.5 text-cream">
+            <span className="flex items-center px-6 text-[13px] font-medium tracking-wide">
+              {marqueeItems.map((item, i) => (
+                <span key={i} className="flex items-center">
+                  {i > 0 && <Dot />}
+                  {i % 2 === 0 ? <strong className="font-bold">{item}</strong> : <em className="italic">{item}</em>}
+                </span>
+              ))}
+            </span>
+          </Marquee>
+        )
       )}
 
       {/* 3. Hero vidéo */}
-      <Hero texts={texts} videoUrl={heroVideos[0]?.url} />
+      <Hero texts={texts} videoUrl={heroVideos[0]?.url} textsReady={textsReady} />
 
       {/* 4. Bande photos défilante */}
       <PhotoStrip photos={stripPhotos} />
 
-      {/* 5. Catégories */}
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6" aria-labelledby="categories-title">
-        <SectionHeading
-          eyebrow="Trouver"
-          title="Que cherchez-vous ?"
-          subtitle="Œufs fécondés, volailles ou matériel : parcourez notre catalogue et commandez en un clic sur WhatsApp."
-        />
-        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {PRODUCT_TYPES.map((t, i) => (
-            <Reveal key={t.value} delay={i * 80}>
-              <Link
-                to={`/annonces?type=${t.value}`}
-                className="card-lift group relative block aspect-[4/3] overflow-hidden rounded-3xl shadow-card"
-              >
-                <div className="card-zoom absolute inset-0">
-                  <SmartImg src={products.find((p) => p.type === t.value)?.images[0]} alt={t.label} className="h-full w-full object-cover" />
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-bark/80 via-bark/20 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-6">
-                  <h3 className="font-display text-2xl font-semibold text-cream">{t.label}</h3>
-                  <p className="mt-1 text-sm text-cream/80">{t.tagline}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-terra-soft">
-                    {counts[t.value]} produit{counts[t.value] > 1 ? 's' : ''}
-                  </p>
-                </div>
-                <span className="absolute right-5 top-5 grid h-10 w-10 translate-x-2 place-items-center rounded-full bg-cream/90 text-bark opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                </span>
-              </Link>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal className="mt-10 text-center">
-          <Link
-            to="/annonces"
-            className="btn inline-flex items-center gap-2 rounded-full border border-line bg-white px-6 py-3 text-sm font-semibold text-bark shadow-card hover:border-terra hover:text-terra-dark"
-          >
-            Tous les produits
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </Link>
-        </Reveal>
-      </section>
+      {/* 5. Nos œufs par race */}
+      {races.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6" aria-labelledby="categories-title">
+          <SectionHeading
+            eyebrow="Trouver"
+            title="Nos œufs par race"
+            subtitle="Des œufs fécondés choisis par race, calibrés et marqués à la date de ponte. Commandez en un clic sur WhatsApp."
+          />
+          <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {races.map((r, i) => (
+              <Reveal key={r.race} delay={i * 80}>
+                <Link
+                  to={`/annonces?race=${encodeURIComponent(r.race)}`}
+                  className="card-lift group relative block aspect-[4/3] overflow-hidden rounded-3xl shadow-card"
+                >
+                  <div className="card-zoom absolute inset-0">
+                    <SmartImg src={r.products[0]?.images[0]} alt={r.race} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-bark/80 via-bark/20 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-6">
+                    <h3 className="font-display text-2xl font-semibold text-cream">{r.race}</h3>
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-terra-soft">
+                      {r.products.length} produit{r.products.length > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <span className="absolute right-5 top-5 grid h-10 w-10 translate-x-2 place-items-center rounded-full bg-cream/90 text-bark opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </span>
+                </Link>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 6. Histoire */}
       <section className="bg-sand/60 py-20 sm:py-24" aria-labelledby="histoire-title">
@@ -285,7 +326,7 @@ export default function Home() {
       </section>
 
       {/* 8. À la une */}
-      {featured.length > 0 && (
+      {(featured.length > 0 || !productsReady) && (
         <section className="bg-sand/60 py-20 sm:py-24" aria-labelledby="une-title">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHeading
@@ -294,16 +335,16 @@ export default function Home() {
               subtitle="Nos coups de cœur, choisis pour leur qualité et leur popularité."
             />
             <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {featured.slice(0, 3).map((p, i) => (
-                <ProductCard key={p.id} product={p} delay={i * 90} />
-              ))}
+              {productsReady
+                ? featured.slice(0, 3).map((p, i) => <ProductCard key={p.id} product={p} delay={i * 90} />)
+                : [0, 1, 2].map((i) => <ProductCardSkeleton key={i} />)}
             </div>
           </div>
         </section>
       )}
 
       {/* 9. Derniers produits */}
-      {latest.length > 0 && (
+      {(latest.length > 0 || !productsReady) && (
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6" aria-labelledby="recents-title">
           <SectionHeading
             eyebrow="Nouveautés"
@@ -311,26 +352,28 @@ export default function Home() {
             subtitle="Les nouveautés de notre basse-cour, ajoutées récemment."
           />
           <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {latest.map((p, i) => (
-              <ProductCard key={p.id} product={p} delay={i * 90} />
-            ))}
+            {productsReady
+              ? latest.map((p, i) => <ProductCard key={p.id} product={p} delay={i * 90} />)
+              : [0, 1, 2, 3, 4, 5].map((i) => <ProductCardSkeleton key={i} />)}
           </div>
-          <Reveal className="mt-10 text-center">
-            <Link
-              to="/annonces"
-              className="btn inline-flex items-center gap-2 rounded-full bg-terra px-7 py-3.5 text-sm font-semibold text-cream shadow-card hover:bg-terra-dark"
-            >
-              Voir tout le catalogue
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </Link>
-          </Reveal>
+          {productsReady && (
+            <Reveal className="mt-10 text-center">
+              <Link
+                to="/annonces"
+                className="btn inline-flex items-center gap-2 rounded-full bg-terra px-7 py-3.5 text-sm font-semibold text-cream shadow-card hover:bg-terra-dark"
+              >
+                Voir tout le catalogue
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Link>
+            </Reveal>
+          )}
         </section>
       )}
 
       {/* 12. Animaux vivants */}
-      {animals.length > 0 && (
+      {animalTypesVisible && (animals.length > 0 || !productsReady) && (
         <section className="bg-leaf-soft/40 py-20 sm:py-24" aria-labelledby="animaux-title">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHeading
@@ -339,16 +382,16 @@ export default function Home() {
               subtitle="Volailles élevées en plein air, disponibles en retrait ou en livraison soignée."
             />
             <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {animals.slice(0, 4).map((p, i) => (
-                <ProductCard key={p.id} product={p} delay={i * 80} />
-              ))}
+              {productsReady
+                ? animals.slice(0, 4).map((p, i) => <ProductCard key={p.id} product={p} delay={i * 80} />)
+                : [0, 1, 2, 3].map((i) => <ProductCardSkeleton key={i} />)}
             </div>
           </div>
         </section>
       )}
 
       {/* 13. Matériel */}
-      {materiel.length > 0 && (
+      {materielVisible && (materiel.length > 0 || !productsReady) && (
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6" aria-labelledby="materiel-title">
           <SectionHeading
             eyebrow="Pour bien commencer"
@@ -356,9 +399,9 @@ export default function Home() {
             subtitle="Couveuses, mangeoires et tout le nécessaire pour votre basse-cour."
           />
           <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {materiel.slice(0, 4).map((p, i) => (
-              <ProductCard key={p.id} product={p} delay={i * 80} />
-            ))}
+            {productsReady
+              ? materiel.slice(0, 4).map((p, i) => <ProductCard key={p.id} product={p} delay={i * 80} />)
+              : [0, 1, 2, 3].map((i) => <ProductCardSkeleton key={i} />)}
           </div>
         </section>
       )}
@@ -367,20 +410,7 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6" aria-labelledby="envie-title">
         <SectionHeading eyebrow="Par envie" title="Deux façons de commencer" />
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2">
-          {[
-            {
-              to: '/annonces?type=oeufs',
-              title: 'Œufs fécondés',
-              text: 'Des lots calibrés, marqués à la date de ponte, prêts pour votre couveuse.',
-              image: firstOeuf?.images[0],
-            },
-            {
-              to: '/annonces?type=poussins',
-              title: 'Animaux vivants',
-              text: 'Poussins & volailles élevés en plein air, à emporter ou en livraison.',
-              image: firstAnimal?.images[0],
-            },
-          ].map((c, i) => (
+          {envieCards.map((c, i) => (
             <Reveal key={c.title} delay={i * 120}>
               <Link
                 to={c.to}
@@ -407,7 +437,7 @@ export default function Home() {
       </section>
 
       {/* 15. Blog */}
-      {posts.length > 0 && (
+      {(posts.length > 0 || !blogReady) && (
         <section className="bg-sand/60 py-20 sm:py-24" aria-labelledby="blog-title">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <SectionHeading
@@ -416,7 +446,8 @@ export default function Home() {
               subtitle="Conseils d’élevage, guides d’incubation et retours d’expérience."
             />
             <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
-              {posts.map((a, i) => (
+              {blogReady
+                ? posts.map((a, i) => (
                 <Reveal key={a.id} delay={i * 100}>
                   <Link
                     to={`/blog/${a.slug}`}
@@ -437,45 +468,64 @@ export default function Home() {
                     </div>
                   </Link>
                 </Reveal>
-              ))}
+                ))
+                : [0, 1, 2].map((i) => <BlogCardSkeleton key={i} />)}
             </div>
           </div>
         </section>
       )}
 
       {/* Livraison & paiement récap */}
-      {(zones.length > 0 || payments.length > 0) && (
+      {(zones.length > 0 || payments.length > 0 || !zonesReady || !paymentsReady) && (
         <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-          <Reveal className="grid gap-6 rounded-[2rem] bg-white p-8 shadow-card sm:grid-cols-2 sm:p-10">
-            {zones.length > 0 && (
-              <div>
-                <h3 className="font-display text-xl font-semibold text-bark">Livraison</h3>
-                <ul className="mt-3 space-y-1.5 text-sm text-bark-soft">
-                  {zones.map((z) => (
-                    <li key={z.id} className="flex justify-between gap-4">
-                      <span>{z.name}</span>
-                      <span className="font-medium text-bark">
-                        {z.fee_fcfa === 0 ? 'Gratuite' : formatPrice(z.fee_fcfa)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+          {zonesReady && paymentsReady ? (
+            (zones.length > 0 || payments.length > 0) && (
+              <Reveal className="grid gap-6 rounded-[2rem] bg-white p-8 shadow-card sm:grid-cols-2 sm:p-10">
+                {zones.length > 0 && (
+                  <div>
+                    <h3 className="font-display text-xl font-semibold text-bark">Livraison</h3>
+                    <ul className="mt-3 space-y-1.5 text-sm text-bark-soft">
+                      {zones.map((z) => (
+                        <li key={z.id} className="flex justify-between gap-4">
+                          <span>{z.name}</span>
+                          <span className="font-medium text-bark">
+                            {z.fee_fcfa === 0 ? 'Gratuite' : formatPrice(z.fee_fcfa)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {payments.length > 0 && (
+                  <div>
+                    <h3 className="font-display text-xl font-semibold text-bark">Paiement</h3>
+                    <ul className="mt-3 space-y-1.5 text-sm text-bark-soft">
+                      {payments.map((p) => (
+                        <li key={p.id}>
+                          <span className="font-medium text-bark">{p.label}</span>
+                          {p.details && <span> — {p.details}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </Reveal>
+            )
+          ) : (
+            <div className="grid gap-6 rounded-[2rem] bg-white p-8 shadow-card sm:grid-cols-2 sm:p-10" aria-hidden="true">
+              <div className="space-y-3">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-4 w-3/5" />
               </div>
-            )}
-            {payments.length > 0 && (
-              <div>
-                <h3 className="font-display text-xl font-semibold text-bark">Paiement</h3>
-                <ul className="mt-3 space-y-1.5 text-sm text-bark-soft">
-                  {payments.map((p) => (
-                    <li key={p.id}>
-                      <span className="font-medium text-bark">{p.label}</span>
-                      {p.details && <span> — {p.details}</span>}
-                    </li>
-                  ))}
-                </ul>
+              <div className="space-y-3">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
               </div>
-            )}
-          </Reveal>
+            </div>
+          )}
         </section>
       )}
 

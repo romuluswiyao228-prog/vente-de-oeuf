@@ -2,13 +2,16 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { canAutoplayVideo } from '../lib/perf'
 import type { SiteTexts } from '../lib/types'
+import Skeleton from './Skeleton'
 
 interface HeroProps {
   texts: SiteTexts
   videoUrl?: string | null
+  /** false tant que les textes réels ne sont pas disponibles (première visite). */
+  textsReady?: boolean
 }
 
-export default function Hero({ texts, videoUrl }: HeroProps) {
+export default function Hero({ texts, videoUrl, textsReady = true }: HeroProps) {
   // Pas d'autoplay sur connexions lentes (saveData) ni en reduced-motion :
   // on garde le fond terracotta uni.
   const [autoplay] = useState(canAutoplayVideo)
@@ -58,34 +61,50 @@ export default function Hero({ texts, videoUrl }: HeroProps) {
             </span>
           </div>
 
-          <p className="reveal is-visible text-sm font-semibold uppercase tracking-[0.25em] text-terra-soft">
-            {texts.hero_eyebrow}
-          </p>
-          <h1 className="reveal is-visible mt-3 font-display text-4xl font-semibold leading-[1.08] text-cream sm:text-5xl lg:text-6xl">
-            {texts.hero_title}
-          </h1>
-          <p className="reveal is-visible mt-6 max-w-xl text-base leading-relaxed text-cream/80 sm:text-lg">
-            {texts.hero_subtitle}
-          </p>
+          {textsReady ? (
+            <>
+              <p className="reveal is-visible text-sm font-semibold uppercase tracking-[0.25em] text-terra-soft">
+                {texts.hero_eyebrow}
+              </p>
+              <h1 className="reveal is-visible mt-3 font-display text-4xl font-semibold leading-[1.08] text-cream sm:text-5xl lg:text-6xl">
+                {texts.hero_title}
+              </h1>
+              <p className="reveal is-visible mt-6 max-w-xl text-base leading-relaxed text-cream/80 sm:text-lg">
+                {texts.hero_subtitle}
+              </p>
 
-          <div className="reveal is-visible mt-9 flex flex-wrap items-center gap-4">
-            <Link
-              to="/annonces"
-              className="btn rounded-full bg-terra px-7 py-3.5 text-sm font-semibold text-cream shadow-lg hover:bg-terra-dark"
-            >
-              {texts.hero_cta_primary}
-            </Link>
-            <a
-              href="#comment-ca-marche"
-              className="btn rounded-full border border-cream/40 px-7 py-3.5 text-sm font-semibold text-cream hover:bg-cream/10"
-            >
-              {texts.hero_cta_secondary}
-            </a>
-          </div>
+              <div className="reveal is-visible mt-9 flex flex-wrap items-center gap-4">
+                <Link
+                  to="/annonces"
+                  className="btn rounded-full bg-terra px-7 py-3.5 text-sm font-semibold text-cream shadow-lg hover:bg-terra-dark"
+                >
+                  {texts.hero_cta_primary}
+                </Link>
+                <a
+                  href="#comment-ca-marche"
+                  className="btn rounded-full border border-cream/40 px-7 py-3.5 text-sm font-semibold text-cream hover:bg-cream/10"
+                >
+                  {texts.hero_cta_secondary}
+                </a>
+              </div>
 
-          <p className="reveal is-visible mt-8 text-sm text-cream/70">
-            Des produits sélectionnés avec soin, livrés à Lomé et dans tout le Togo.
-          </p>
+              <p className="reveal is-visible mt-8 text-sm text-cream/70">
+                Des produits sélectionnés avec soin, livrés à Lomé et dans tout le Togo.
+              </p>
+            </>
+          ) : (
+            <div aria-hidden="true">
+              <Skeleton className="h-3 w-44 bg-cream/25" />
+              <Skeleton className="mt-4 h-12 w-4/5 sm:h-16 lg:h-[4.5rem]" />
+              <Skeleton className="mt-4 h-5 w-full max-w-md bg-cream/20" />
+              <Skeleton className="mt-2 h-5 w-2/3 max-w-sm bg-cream/20" />
+              <div className="mt-9 flex flex-wrap items-center gap-4">
+                <Skeleton className="h-[3.25rem] w-44 rounded-full bg-cream/25" />
+                <Skeleton className="h-[3.25rem] w-40 rounded-full bg-cream/15" />
+              </div>
+              <Skeleton className="mt-8 h-4 w-72 max-w-full bg-cream/15" />
+            </div>
+          )}
         </div>
       </div>
 

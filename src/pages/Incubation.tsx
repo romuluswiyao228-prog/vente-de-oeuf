@@ -61,7 +61,7 @@ export default function Incubation() {
             </svg>
           </div>
           <Link
-            to="/annonces?type=oeufs"
+            to="/annonces"
             className="btn block rounded-3xl bg-terra px-6 py-5 text-center text-sm font-semibold text-cream hover:bg-terra-dark"
           >
             Voir les œufs fertiles →

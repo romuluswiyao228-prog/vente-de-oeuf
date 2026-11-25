@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { Product, ProductType } from '../lib/types'
 import { PRODUCT_TYPES } from '../lib/types'
-import { formatPrice } from '../lib/store'
+import { formatPrice, preloadProduct } from '../lib/store'
 import SmartImg from './SmartImg'
 import Reveal from './Reveal'
 
@@ -18,6 +18,9 @@ export default function ProductCard({ product, delay = 0 }: { product: Product; 
       <Link
         to={`/annonces/${product.id}`}
         className="card-lift group block overflow-hidden rounded-3xl bg-white shadow-card"
+        onMouseEnter={() => preloadProduct(product)}
+        onTouchStart={() => preloadProduct(product)}
+        onFocus={() => preloadProduct(product)}
       >
         <div className="card-zoom relative aspect-[4/3] overflow-hidden bg-sand">
           <SmartImg src={image} alt={product.name} className="h-full w-full object-cover" />

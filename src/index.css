@@ -171,3 +171,492 @@ body {
     transform: none;
   }
 }
+
+/* ---------- Tableau de bord admin ---------- */
+@keyframes dashDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.dash-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: dashDraw 1.1s cubic-bezier(.3,.7,.3,1) both;
+}
+@keyframes dashFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.dash-fade {
+  opacity: 1;
+  animation: dashFade .8s ease both;
+}
+@keyframes dashRise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dash-rise {
+  opacity: 1;
+  transform: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dashRise .5s cubic-bezier(.2,.8,.2,1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-draw,
+  .dash-fade,
+  .dash-rise {
+    animation: none !important;
+  }
+}
+
+/* ==================== Tableau de bord « verre dépoli » (dash2) ==================== */
+
+.dash2 {
+  --d2-bg: #171310;
+  --d2-glow: rgba(255, 176, 102, 0.16);
+  --d2-mint: #3ddc97;
+  --d2-cream: #f5ead9;
+  --d2-dim: rgba(245, 234, 217, 0.62);
+  position: relative;
+  border-radius: 2rem;
+  background:
+    radial-gradient(1200px 500px at 85% -10%, var(--d2-glow), transparent 60%),
+    radial-gradient(900px 480px at -10% 110%, rgba(61, 220, 151, 0.07), transparent 55%),
+    var(--d2-bg);
+  color: var(--d2-cream);
+  padding: clamp(1rem, 3vw, 2rem);
+  overflow: hidden;
+}
+
+.dash2 ::selection {
+  background: rgba(61, 220, 151, 0.35);
+}
+
+/* Carte en verre dépoli : blanc 6 %, bordure 11 %, flou 16 px, coins 18 px */
+.d2-card {
+  position: relative;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  padding: 1.1rem 1.25rem;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.d2-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Carte qui « s'allume » brièvement après un événement temps réel */
+.d2-card.d2-lit {
+  border-color: rgba(61, 220, 151, 0.65);
+  box-shadow: 0 0 0 1px rgba(61, 220, 151, 0.35), 0 0 28px rgba(61, 220, 151, 0.22);
+}
+
+/* Apparition échelonnée des cartes */
+.d2-enter {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: d2Enter 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes d2Enter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.d2-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--d2-dim);
+}
+
+.d2-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--d2-cream);
+}
+
+.d2-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.d2-pill.up {
+  background: rgba(61, 220, 151, 0.16);
+  color: var(--d2-mint);
+}
+
+.d2-pill.down {
+  background: rgba(255, 120, 90, 0.16);
+  color: #ff9d7a;
+}
+
+.d2-pill.flat {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--d2-dim);
+}
+
+.d2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--d2-cream);
+  padding: 0.45rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.d2-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(61, 220, 151, 0.5);
+}
+
+.d2-btn.primary {
+  background: var(--d2-mint);
+  border-color: transparent;
+  color: #0d241a;
+}
+
+.d2-btn.primary:hover {
+  background: #5fe7ab;
+}
+
+.d2-input,
+.d2-select {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--d2-cream);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.d2-input::placeholder {
+  color: rgba(245, 234, 217, 0.4);
+}
+
+.d2-input:focus,
+.d2-select:focus {
+  outline: none;
+  border-color: rgba(61, 220, 151, 0.6);
+}
+
+.d2-select option {
+  background: #241c15;
+  color: var(--d2-cream);
+}
+
+/* Inclinaison 3D légère au survol (ordinateur, pointer fin) */
+@media (pointer: fine) {
+  .d2-tilt {
+    transform-style: preserve-3d;
+    transition: transform 0.18s ease-out;
+    will-change: transform;
+  }
+}
+
+/* Courbes qui se dessinent de gauche à droite */
+.d2-line {
+  stroke-dasharray: 1400;
+  stroke-dashoffset: 1400;
+  animation: d2Draw 1.4s cubic-bezier(0.3, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes d2Draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Barres qui montent */
+.d2-bar {
+  transform-origin: bottom;
+  transform: scaleY(0);
+  animation: d2Bar 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes d2Bar {
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Point de série (marqueurs : cercle, carré, triangle gérés en SVG) */
+.d2-dot {
+  opacity: 0;
+  animation: d2Dot 0.4s ease forwards;
+}
+
+@keyframes d2Dot {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Ligne d'événement pointillée */
+.d2-event-line {
+  stroke: rgba(245, 234, 217, 0.35);
+  stroke-dasharray: 4 4;
+}
+
+/* Bulle au survol des graphiques */
+.d2-tip {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 15, 11, 0.92);
+  color: var(--d2-cream);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  transform: translate(-50%, -110%);
+  z-index: 5;
+}
+
+/* Pastille « En direct » */
+.d2-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: rgba(61, 220, 151, 0.14);
+  color: var(--d2-mint);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.d2-live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--d2-mint);
+  animation: d2Pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes d2Pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(61, 220, 151, 0);
+  }
+}
+
+/* Barre de progression */
+.d2-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.d2-progress > div {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--d2-mint), #7ef0c0);
+  transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ==================== Mode léger ==================== */
+
+.dash2.d2-light {
+  background: #efe7da;
+  color: #4a3626;
+}
+
+.dash2.d2-light .d2-card {
+  background: #fffdf9;
+  border-color: rgba(74, 54, 38, 0.14);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.dash2.d2-light .d2-card:hover {
+  border-color: rgba(74, 54, 38, 0.25);
+}
+
+.dash2.d2-light .d2-label,
+.dash2.d2-light .d2-dim {
+  color: #8a7458;
+}
+
+.dash2.d2-light .d2-value {
+  color: #4a3626;
+}
+
+.dash2.d2-light .d2-btn {
+  background: #fffdf9;
+  border-color: rgba(74, 54, 38, 0.2);
+  color: #4a3626;
+}
+
+.dash2.d2-light .d2-input,
+.dash2.d2-light .d2-select {
+  background: #fffdf9;
+  border-color: rgba(74, 54, 38, 0.2);
+  color: #4a3626;
+}
+
+.dash2.d2-light .d2-input::placeholder {
+  color: #a08a70;
+}
+
+.dash2.d2-light .d2-select option {
+  background: #fffdf9;
+  color: #4a3626;
+}
+
+.dash2.d2-light .d2-tip {
+  background: #fffdf9;
+  color: #4a3626;
+  border-color: rgba(74, 54, 38, 0.2);
+}
+
+.dash2.d2-light .d2-event-line {
+  stroke: rgba(74, 54, 38, 0.3);
+}
+
+/* Mode léger : pas de flou, pas d'animations */
+.d2-light .d2-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.d2-light .d2-line,
+.d2-light .d2-bar,
+.d2-light .d2-dot,
+.d2-light .d2-enter,
+.d2-light .d2-live::before {
+  animation: none !important;
+  stroke-dashoffset: 0 !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.d2-light .d2-tilt {
+  transition: none;
+}
+
+/* ==================== Rapport imprimable ==================== */
+
+.d2-print-root {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .d2-print-root,
+  .d2-print-root * {
+    visibility: visible;
+  }
+  .d2-print-root {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    color: #1a1a1a;
+    padding: 24px;
+    font-family: var(--font-sans);
+  }
+  .d2-print-root h1,
+  .d2-print-root h2 {
+    font-family: var(--font-serif);
+  }
+  .d2-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-top: 12px;
+  }
+  .d2-print-table th,
+  .d2-print-table td {
+    border: 1px solid #ddd;
+    padding: 4px 6px;
+    text-align: right;
+  }
+  .d2-print-table th:first-child,
+  .d2-print-table td:first-child {
+    text-align: left;
+  }
+  .d2-print-table thead th {
+    background: #f4efe6;
+  }
+  .d2-print-chart {
+    width: 100%;
+    height: 180px;
+    margin: 12px 0;
+  }
+}
+
+/* ==================== Navigation flottante mobile ==================== */
+
+.d2-bottomnav {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(23, 19, 16, 0.85);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.d2-bottomnav button {
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(245, 234, 217, 0.75);
+  white-space: nowrap;
+}
+
+.d2-bottomnav button.active {
+  background: var(--d2-mint, #3ddc97);
+  color: #0d241a;
+}
+
+@media (min-width: 1024px) {
+  .d2-bottomnav {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .d2-enter,
+  .d2-line,
+  .d2-bar,
+  .d2-dot,
+  .d2-live::before {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

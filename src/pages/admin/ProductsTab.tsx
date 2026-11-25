@@ -10,16 +10,18 @@ const inputCls =
 interface Props {
   products: Product[]
   refetch: () => void
+  /** Types masqués sur le site public : absents de la liste sauf s'ils sont déjà choisis. */
+  hiddenTypes?: ProductType[]
 }
 
-export default function ProductsTab({ products, refetch }: Props) {
+export default function ProductsTab({ products, refetch, hiddenTypes = [] }: Props) {
   const [editing, setEditing] = useState<Partial<Product> | null>(null)
   const [images, setImages] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const openNew = () => {
-    setEditing({ name: '', type: 'oeufs', description: '', price_fcfa: 0, stock: 0, status: 'actif', featured: false })
+    setEditing({ name: '', type: 'oeufs', race: '', description: '', price_fcfa: 0, stock: 0, status: 'actif', featured: false })
     setImages([])
   }
 
@@ -67,6 +69,11 @@ export default function ProductsTab({ products, refetch }: Props) {
     }
   }
 
+  // Types proposés : les types masqués n'apparaissent que si le produit édité en a déjà un.
+  const typeOptions = PRODUCT_TYPES.filter(
+    (t) => !hiddenTypes.includes(t.value) || t.value === editing?.type,
+  )
+
   if (editing) {
     return (
       <form onSubmit={submit} className="rounded-[2rem] bg-white p-8 shadow-card">
@@ -90,11 +97,22 @@ export default function ProductsTab({ products, refetch }: Props) {
               onChange={(e) => setEditing({ ...editing, type: e.target.value as ProductType })}
               className={inputCls}
             >
-              {PRODUCT_TYPES.map((t) => (
+              {typeOptions.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
           </label>
+          {editing.type === 'oeufs' && (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-bark">Race</span>
+              <input
+                value={editing.race ?? ''}
+                onChange={(e) => setEditing({ ...editing, race: e.target.value })}
+                placeholder="Marans, Issa Brown…"
+                className={inputCls}
+              />
+            </label>
+          )}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-bark">Prix (FCFA)</span>
             <input

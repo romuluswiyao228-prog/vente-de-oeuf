@@ -15,6 +15,7 @@ export interface LastOrder {
   subtotal_fcfa: number
   delivery_fee_fcfa: number
   total_fcfa: number
+  payment_method: string
   payment_label: string
   payment_details: string
   note: string

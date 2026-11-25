@@ -111,6 +111,7 @@ export default function Commande() {
         subtotal_fcfa: created.subtotal_fcfa,
         delivery_fee_fcfa: created.delivery_fee_fcfa,
         total_fcfa: created.total_fcfa,
+        payment_method: selectedPayment?.id ?? '',
         payment_label: selectedPayment?.label ?? '',
         payment_details: selectedPayment?.details ?? '',
         note,

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState, type FormEvent } from 'react'
 import { adminSignIn, adminSignOut, adminSignUp, useAdminSession } from '../../lib/store'
 import ProductsTab from './ProductsTab'
 import MediaTab from './MediaTab'
@@ -6,21 +6,51 @@ import TextsTab from './TextsTab'
 import DeliveryTab from './DeliveryTab'
 import OrdersTab from './OrdersTab'
 import BlogTab from './BlogTab'
-import { useAdminData } from '../../lib/store'
+import CategoriesTab from './CategoriesTab'
+import FarmTab from './FarmTab'
+import Skeleton from '../../components/Skeleton'
+import { useAdminData, parseHiddenTypes } from '../../lib/store'
+import { farmAlertCount, useFarmData } from '../../lib/farm'
 
-const tabs = [
-  { id: 'produits', label: 'Produits' },
-  { id: 'medias', label: 'Médias' },
-  { id: 'textes', label: 'Textes' },
-  { id: 'livraison', label: 'Livraison & Paiement' },
-  { id: 'commandes', label: 'Commandes' },
-  { id: 'blog', label: 'Blog' },
+const DashboardHome = lazy(() => import('./DashboardHome'))
+
+type FarmSub = 'production' | 'ventes' | 'clients' | 'oeufs' | 'animaux' | 'incubation' | 'appro' | 'depenses' | 'caisse' | 'rappels'
+
+const sections = [
+  {
+    title: 'Pilotage',
+    items: [{ id: 'tableau', label: 'Tableau de bord' }],
+  },
+  {
+    title: 'Boutique',
+    items: [
+      { id: 'produits', label: 'Produits' },
+      { id: 'categories', label: 'Catégories' },
+      { id: 'commandes', label: 'Commandes' },
+      { id: 'livraison', label: 'Livraison & Paiement' },
+    ],
+  },
+  {
+    title: 'Contenu du site',
+    items: [
+      { id: 'medias', label: 'Médias' },
+      { id: 'textes', label: 'Textes' },
+      { id: 'blog', label: 'Blog' },
+    ],
+  },
+  {
+    title: 'Ferme',
+    items: [{ id: 'ferme', label: 'Ferme', badge: true }],
+  },
 ]
 
 export default function Admin() {
   const { session, isAdmin, configured } = useAdminSession()
   const data = useAdminData()
-  const [tab, setTab] = useState('produits')
+  const farm = useFarmData()
+  const [tab, setTab] = useState('tableau')
+  const [farmSub, setFarmSub] = useState<{ sub: FarmSub; nonce: number } | null>(null)
+  const [navOpen, setNavOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -152,6 +182,42 @@ export default function Admin() {
     )
   }
 
+  const farmAlerts = farmAlertCount(farm.data)
+
+  const renderNav = (onSelect?: () => void) => (
+    <nav className="space-y-6" aria-label="Sections de l’administration">
+      {sections.map((section) => (
+        <div key={section.title}>
+          <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-bark-soft">
+            {section.title}
+          </p>
+          <div className="mt-2 space-y-1">
+            {section.items.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setTab(t.id)
+                  onSelect?.()
+                }}
+                className={`btn flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium ${
+                  tab === t.id ? 'bg-terra text-cream' : 'text-bark-soft hover:bg-sand hover:text-bark'
+                }`}
+              >
+                <span>{t.label}</span>
+                {'badge' in t && t.badge && farmAlerts > 0 && (
+                  <span className="ml-2 grid h-5 min-w-5 place-items-center rounded-full bg-terra px-1.5 text-[11px] font-bold text-cream">
+                    {farmAlerts}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  )
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -167,29 +233,85 @@ export default function Admin() {
         </button>
       </div>
 
-      <div className="mt-8 flex gap-2 overflow-x-auto pb-2">
-        {tabs.map((t) => (
+      <div className="mt-8 lg:grid lg:grid-cols-[15rem_1fr] lg:gap-10">
+        {/* Navigation mobile : menu repliable */}
+        <div className="lg:hidden">
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`btn shrink-0 rounded-full px-5 py-2.5 text-sm font-semibold ${
-              tab === t.id ? 'bg-terra text-cream' : 'bg-white text-bark shadow-card hover:text-terra-dark'
-            }`}
+            type="button"
+            onClick={() => setNavOpen((v) => !v)}
+            aria-expanded={navOpen}
+            className="btn flex w-full items-center justify-between rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-bark shadow-card"
           >
-            {t.label}
+            <span>
+              {sections.flatMap((s) => s.items).find((t) => t.id === tab)?.label}
+            </span>
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-4 w-4 transition-transform ${navOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
           </button>
-        ))}
-      </div>
+          {navOpen && (
+            <div className="mt-3 rounded-3xl bg-white p-4 shadow-card">{renderNav(() => setNavOpen(false))}</div>
+          )}
+        </div>
 
-      <div className="mt-8">
-        {tab === 'produits' && <ProductsTab products={data.products} refetch={data.refetch} />}
-        {tab === 'medias' && <MediaTab media={data.media} refetch={data.refetch} />}
-        {tab === 'textes' && <TextsTab texts={data.texts} refetch={data.refetch} />}
-        {tab === 'livraison' && (
-          <DeliveryTab zones={data.zones} payments={data.payments} refetch={data.refetch} />
-        )}
-        {tab === 'commandes' && <OrdersTab orders={data.orders} refetch={data.refetch} />}
-        {tab === 'blog' && <BlogTab posts={data.posts} refetch={data.refetch} />}
+        {/* Navigation desktop : barre latérale par sections */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 rounded-3xl bg-white p-4 shadow-card">{renderNav()}</div>
+        </aside>
+
+        <div className="mt-8 lg:mt-0">
+          {tab === 'tableau' && (
+            <Suspense
+              fallback={
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <Skeleton key={i} className="h-28 rounded-3xl" />
+                    ))}
+                  </div>
+                  <Skeleton className="h-96 rounded-[2rem]" />
+                </div>
+              }
+            >
+              <DashboardHome
+                farm={farm.data}
+                farmRefetch={farm.refetch}
+                onGoFarm={(sub) => {
+                  setFarmSub({ sub: sub as FarmSub, nonce: Date.now() })
+                  setTab('ferme')
+                }}
+                onNavigateTab={setTab}
+              />
+            </Suspense>
+          )}
+          {tab === 'produits' && (
+            <ProductsTab
+              products={data.products}
+              refetch={data.refetch}
+              hiddenTypes={parseHiddenTypes((data.texts as Record<string, string> | null)?.hidden_product_types)}
+            />
+          )}
+          {tab === 'categories' && <CategoriesTab texts={data.texts} refetch={data.refetch} />}
+          {tab === 'medias' && <MediaTab media={data.media} refetch={data.refetch} />}
+          {tab === 'textes' && <TextsTab texts={data.texts} refetch={data.refetch} />}
+          {tab === 'livraison' && (
+            <DeliveryTab zones={data.zones} payments={data.payments} refetch={data.refetch} />
+          )}
+          {tab === 'commandes' && <OrdersTab orders={data.orders} refetch={data.refetch} />}
+          {tab === 'blog' && <BlogTab posts={data.posts} refetch={data.refetch} />}
+          {tab === 'ferme' && (
+            <FarmTab farm={farm.data} loading={farm.loading} refetch={farm.refetch} products={data.products} requestedSub={farmSub} />
+          )}
+        </div>
       </div>
     </div>
   )

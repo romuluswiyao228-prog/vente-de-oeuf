@@ -9,8 +9,26 @@ import {
   type MediaTestResult,
 } from '../../lib/store'
 import type { MediaItem, MediaKind } from '../../lib/types'
+import {
+  AUDIO_ONLY_MESSAGE,
+  ConversionCancelled,
+  VIDEO_INPUT_MAX_SIZE,
+  formatMo,
+  isAcceptedVideo,
+  isAudioOnlyProbe,
+  isLightMp4,
+  prepareVideoForUpload,
+  probeVideo,
+  type VideoProbe,
+} from '../../lib/videoConvert'
 
-const MAX_SIZE = 50 * 1024 * 1024 // 50 Mo
+const MAX_SIZE = 50 * 1024 * 1024 // 50 Mo (images)
+
+const VIDEO_ACCEPT =
+  'video/mp4,video/quicktime,video/x-m4v,video/webm,video/x-msvideo,video/x-matroska,.mp4,.mov,.m4v,.webm,.avi,.mkv'
+
+const isMobileDevice = () =>
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
 
 interface KindDef {
   kind: MediaKind
@@ -21,8 +39,8 @@ interface KindDef {
 }
 
 const KINDS: KindDef[] = [
-  { kind: 'hero_video', label: 'Vidéo du hero', multiple: false, isVideo: true, accept: 'video/mp4,video/webm,.mp4,.webm' },
-  { kind: 'story_video', label: 'Vidéo section histoire', multiple: false, isVideo: true, accept: 'video/mp4,video/webm,.mp4,.webm' },
+  { kind: 'hero_video', label: 'Vidéo du hero', multiple: false, isVideo: true, accept: VIDEO_ACCEPT },
+  { kind: 'story_video', label: 'Vidéo section histoire', multiple: false, isVideo: true, accept: VIDEO_ACCEPT },
   { kind: 'strip_photo', label: 'Photos bandeau défilant', multiple: true, isVideo: false, accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp' },
   { kind: 'cta_image', label: 'Image bandeau CTA', multiple: false, isVideo: false, accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp' },
   { kind: 'logo', label: 'Logo', multiple: false, isVideo: false, accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp' },
@@ -35,16 +53,13 @@ interface KindMessage {
 }
 
 function validateFile(file: File, isVideo: boolean): string | null {
-  if (file.size > MAX_SIZE) return 'Fichier trop lourd (50 Mo maximum).'
-  const name = file.name.toLowerCase()
   if (isVideo) {
-    const ok =
-      file.type === 'video/mp4' ||
-      file.type === 'video/webm' ||
-      name.endsWith('.mp4') ||
-      name.endsWith('.webm')
-    if (!ok) return 'Convertis ta vidéo en MP4 (H.264) ou en WebM.'
+    if (file.size > VIDEO_INPUT_MAX_SIZE) return 'Fichier trop lourd (300 Mo maximum).'
+    if (!isAcceptedVideo(file))
+      return 'Format non supporté : utilise MP4, MOV, M4V, WebM, AVI ou MKV.'
   } else {
+    if (file.size > MAX_SIZE) return 'Fichier trop lourd (50 Mo maximum).'
+    const name = file.name.toLowerCase()
     const ok =
       ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
       /\.(jpe?g|png|webp)$/.test(name)
@@ -71,9 +86,29 @@ function friendlyError(raw: string): { text: string; detail: string } {
   return { text: raw, detail: raw }
 }
 
+interface ConversionState {
+  kind: MediaKind
+  percent: number | null
+  before: number
+  after: number | null
+  warnings: string[]
+  cancelling: boolean
+}
+
 interface Props {
   media: MediaItem[]
   refetch: () => void
+}
+
+function videoWarnings(file: File, probe: VideoProbe): string[] {
+  const warnings: string[] = []
+  if (probe.probed && probe.duration > 60) {
+    warnings.push(`Attention : la vidéo dure ${Math.round(probe.duration)} s (plus de 60 s).`)
+  }
+  if (file.size > 100 * 1024 * 1024 && isMobileDevice()) {
+    warnings.push('Fichier de plus de 100 Mo sur mobile : la conversion peut être longue.')
+  }
+  return warnings
 }
 
 export default function MediaTab({ media, refetch }: Props) {
@@ -81,6 +116,8 @@ export default function MediaTab({ media, refetch }: Props) {
   const [messages, setMessages] = useState<Record<string, KindMessage>>({})
   const [tests, setTests] = useState<MediaTestResult[] | null>(null)
   const [testing, setTesting] = useState(false)
+  const [conv, setConv] = useState<ConversionState | null>(null)
+  const cancelRef = useRef({ cancelled: false })
   const refs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const setMsg = (kind: MediaKind, msg: KindMessage | null) =>
@@ -95,21 +132,57 @@ export default function MediaTab({ media, refetch }: Props) {
     if (!files?.length) return
     const list = Array.from(files)
 
-    // Validation format + taille avant tout envoi
+    // Validation format + taille + sonde vidéo avant tout envoi
+    const probes = new Map<File, VideoProbe>()
     for (const f of list) {
       const err = validateFile(f, def.isVideo)
       if (err) {
         setMsg(def.kind, { type: 'err', text: err })
         return
       }
+      if (def.isVideo) {
+        const probe = await probeVideo(f)
+        probes.set(f, probe)
+        if (isAudioOnlyProbe(probe, f.name)) {
+          setMsg(def.kind, { type: 'err', text: AUDIO_ONLY_MESSAGE })
+          return
+        }
+      }
     }
 
     setUploading(def.kind)
     setMsg(def.kind, null)
+    setConv(null)
+    cancelRef.current.cancelled = false
+    let convertedSizes: { before: number; after: number } | null = null
     try {
       for (const file of list) {
+        // 0. Vidéo : conversion MP4 H.264 720p sans son si nécessaire
+        let fileToUpload = file
+        if (def.isVideo) {
+          const probe = probes.get(file)
+          if (!isLightMp4(file)) {
+            setConv({
+              kind: def.kind,
+              percent: null,
+              before: file.size,
+              after: null,
+              warnings: probe ? videoWarnings(file, probe) : [],
+              cancelling: false,
+            })
+            const result = await prepareVideoForUpload(file, {
+              onProgress: (p) =>
+                setConv((c) => (c ? { ...c, percent: p } : c)),
+              shouldCancel: () => cancelRef.current.cancelled,
+            })
+            fileToUpload = result.file
+            convertedSizes = { before: result.beforeSize, after: result.afterSize }
+            setConv((c) => (c ? { ...c, after: result.afterSize } : c))
+          }
+        }
+
         // 1. Envoi du fichier
-        const url = await uploadFile(file, def.kind)
+        const url = await uploadFile(fileToUpload, def.kind)
         // 2. Enregistrement en base
         const created = await addMedia(def.kind, url)
         // 3. Seulement ensuite : suppression des anciens (single = tous les autres)
@@ -128,18 +201,28 @@ export default function MediaTab({ media, refetch }: Props) {
       setMsg(def.kind, {
         type: 'ok',
         text: def.isVideo
-          ? 'Vidéo enregistrée. Elle est visible sur le site.'
+          ? convertedSizes
+            ? `Vidéo convertie et enregistrée (${formatMo(convertedSizes.before)} → ${formatMo(convertedSizes.after)}). Elle est visible sur le site.`
+            : 'Vidéo enregistrée. Elle est visible sur le site.'
           : def.multiple
             ? 'Photos ajoutées. Elles sont visibles sur le site.'
             : 'Image enregistrée. Elle est visible sur le site.',
       })
       refetch()
     } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err)
-      const { text, detail } = friendlyError(raw)
-      setMsg(def.kind, { type: 'err', text, detail: detail !== text ? detail : undefined })
+      if (err instanceof ConversionCancelled) {
+        setMsg(def.kind, {
+          type: 'err',
+          text: "Conversion annulée. Aucun média n'a été modifié.",
+        })
+      } else {
+        const raw = err instanceof Error ? err.message : String(err)
+        const { text, detail } = friendlyError(raw)
+        setMsg(def.kind, { type: 'err', text, detail: detail !== text ? detail : undefined })
+      }
     } finally {
       setUploading(null)
+      setConv(null)
     }
   }
 
@@ -236,7 +319,8 @@ export default function MediaTab({ media, refetch }: Props) {
             </div>
             {def.isVideo && (
               <p className="mt-2 text-xs text-bark-soft">
-                Formats acceptés : MP4 (H.264) ou WebM — 50 Mo maximum.
+                Formats acceptés : MP4, MOV, M4V, WebM, AVI, MKV — 300 Mo maximum.
+                Les vidéos sont converties automatiquement en MP4 H.264 720p sans son.
               </p>
             )}
 
@@ -252,6 +336,55 @@ export default function MediaTab({ media, refetch }: Props) {
                 {msg.detail && msg.detail !== msg.text && (
                   <p className="mt-1 text-xs font-normal opacity-80">{msg.detail}</p>
                 )}
+              </div>
+            )}
+
+            {conv?.kind === def.kind && (
+              <div className="mt-4 rounded-2xl border border-line bg-cream/60 p-5">
+                <p className="text-sm font-semibold text-bark">
+                  Conversion en cours — ne ferme pas la page.
+                </p>
+                {conv.warnings.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {conv.warnings.map((w) => (
+                      <li key={w} className="text-xs font-medium text-terra-dark">
+                        ⚠ {w}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-sand">
+                    <div
+                      className={`h-full rounded-full bg-terra transition-all ${
+                        conv.percent === null ? 'w-1/3 animate-pulse' : ''
+                      }`}
+                      style={conv.percent !== null ? { width: `${conv.percent}%` } : undefined}
+                    />
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-bark-soft">
+                    <span>
+                      {conv.percent === null
+                        ? 'Chargement du moteur de conversion…'
+                        : `Conversion ${conv.percent} %`}
+                    </span>
+                    <span className="font-medium text-bark">
+                      {formatMo(conv.before)} →{' '}
+                      {conv.after !== null ? formatMo(conv.after) : '…'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelRef.current.cancelled = true
+                    setConv((c) => (c ? { ...c, cancelling: true } : c))
+                  }}
+                  disabled={conv.cancelling}
+                  className="btn mt-3 rounded-full border border-terra/40 px-4 py-1.5 text-xs font-semibold text-terra-dark hover:bg-terra-soft disabled:opacity-60"
+                >
+                  {conv.cancelling ? 'Annulation…' : 'Annuler'}
+                </button>
               </div>
             )}
 

@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import ProductCard from '../components/ProductCard'
 import Reveal from '../components/Reveal'
 import { useProducts, useSiteTexts, whatsappLink } from '../lib/store'
 import { useSeo } from '../lib/seo'
-import { PRODUCT_TYPES, type ProductType } from '../lib/types'
 
 const selectCls =
   'w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-bark focus:border-terra focus:outline-none'
@@ -13,13 +12,21 @@ const selectCls =
 export default function Annonces() {
   useSeo('Catalogue')
   const [params, setParams] = useSearchParams()
-  const typeParam = params.get('type') as ProductType | null
+  const raceParam = params.get('race')
   const products = useProducts()
   const texts = useSiteTexts()
 
-  const [type, setType] = useState<ProductType | 'tous'>(
-    PRODUCT_TYPES.some((t) => t.value === typeParam) ? (typeParam as ProductType) : 'tous',
+  // Races disponibles parmi les produits visibles (essentialement les œufs).
+  const races = useMemo(
+    () =>
+      Array.from(new Set(products.map((p) => p.race?.trim()).filter((r): r is string => Boolean(r)))).sort((a, b) =>
+        a.localeCompare(b, 'fr'),
+      ),
+    [products],
   )
+
+  const [race, setRace] = useState<string>(raceParam ?? 'tous')
+  useEffect(() => setRace(raceParam ?? 'tous'), [raceParam])
   const [maxPrice, setMaxPrice] = useState(100000)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [query, setQuery] = useState('')
@@ -27,13 +34,13 @@ export default function Annonces() {
   const filtered = useMemo(
     () =>
       products.filter((p) => {
-        if (type !== 'tous' && p.type !== type) return false
+        if (race !== 'tous' && p.race?.trim() !== race) return false
         if (p.price_fcfa > maxPrice) return false
         if (inStockOnly && p.stock <= 0) return false
         if (query && !p.name.toLowerCase().includes(query.toLowerCase())) return false
         return true
       }),
-    [products, type, maxPrice, inStockOnly, query],
+    [products, race, maxPrice, inStockOnly, query],
   )
 
   return (
@@ -41,7 +48,7 @@ export default function Annonces() {
       <PageHeader
         eyebrow="Catalogue"
         title="Tous nos produits"
-        subtitle="Œufs fécondés, volailles, poussins et matériel — filtrez par type, prix et disponibilité."
+        subtitle="Œufs fécondés par race — filtrez par race, prix et disponibilité."
       />
 
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
@@ -58,21 +65,21 @@ export default function Annonces() {
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-bark-soft">Type</span>
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-bark-soft">Race</span>
               <select
-                value={type}
+                value={race}
                 onChange={(e) => {
-                  const v = e.target.value as ProductType | 'tous'
-                  setType(v)
+                  const v = e.target.value
+                  setRace(v)
                   if (v === 'tous') setParams({})
-                  else setParams({ type: v })
+                  else setParams({ race: v })
                 }}
                 className={selectCls}
               >
-                <option value="tous">Tous</option>
-                {PRODUCT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+                <option value="tous">Toutes les races</option>
+                {races.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
                   </option>
                 ))}
               </select>

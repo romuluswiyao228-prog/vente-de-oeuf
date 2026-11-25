@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { supabase, isSupabaseConfigured } from './supabase'
+import { PRODUCT_TYPES } from './types'
 import type {
   BlogPost,
   DeliveryZone,
@@ -10,6 +11,7 @@ import type {
   OrderStatus,
   PaymentMethod,
   Product,
+  ProductType,
   SiteTexts,
 } from './types'
 import { DEFAULT_TEXTS } from './defaults'
@@ -38,6 +40,271 @@ export function orderMessage(product: Product, quantity: number, texts: SiteText
   ].join('\n')
 }
 
+/* ------------------------------ Cache local ------------------------------ */
+
+const CACHE_PREFIX = 'lb-cache:v1:'
+const CACHE_TTL = 7 * 24 * 60 * 60 * 1000 // 7 jours
+
+interface CacheEntry<T> {
+  savedAt: number
+  data: T
+}
+
+function readCache<T>(name: string): T | null {
+  try {
+    const raw = localStorage.getItem(CACHE_PREFIX + name)
+    if (!raw) return null
+    const entry = JSON.parse(raw) as CacheEntry<T>
+    if (!entry || typeof entry.savedAt !== 'number' || !('data' in entry)) return null
+    if (Date.now() - entry.savedAt > CACHE_TTL) {
+      localStorage.removeItem(CACHE_PREFIX + name)
+      return null
+    }
+    return entry.data
+  } catch {
+    return null
+  }
+}
+
+function writeCache<T>(name: string, data: T) {
+  try {
+    localStorage.setItem(CACHE_PREFIX + name, JSON.stringify({ savedAt: Date.now(), data } satisfies CacheEntry<T>))
+  } catch {
+    /* quota dépassé ou mode privé : on ignore */
+  }
+}
+
+/** Vide tous les caches locaux du site public (à appeler après chaque écriture admin). */
+export function invalidateSiteCache() {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(CACHE_PREFIX)) keys.push(key)
+    }
+    keys.forEach((key) => localStorage.removeItem(key))
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ------------------- Requêtes partagées & état « prêt » ------------------- */
+
+const inflight = new Map<string, Promise<unknown>>()
+
+/** Une seule requête réseau à la fois par ressource (évite les doublons au montage). */
+function shared<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inflight.get(key)
+  if (existing) return existing as Promise<T>
+  const promise = fn().finally(() => {
+    inflight.delete(key)
+  })
+  inflight.set(key, promise)
+  return promise
+}
+
+/** Donnée en cache si fraîche, sinon requête réseau partagée + mise en cache. */
+function cachedFetch<T>(name: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = readCache<T>(name)
+  if (cached !== null) return Promise.resolve(cached)
+  return shared(`net:${name}`, async () => {
+    const data = await fetcher()
+    const prev = readCache<T>(name)
+    if (prev === null || JSON.stringify(prev) !== JSON.stringify(data)) writeCache(name, data)
+    return data
+  })
+}
+
+/* Registre « ressource prête » : vrai dès qu'une valeur (cache ou réseau)
+   est disponible. Pilote les squelettes et le loader initial. */
+
+const loadedResources = new Set<string>()
+const loadedListeners = new Set<() => void>()
+
+function markResourceLoaded(name: string) {
+  if (loadedResources.has(name)) return
+  loadedResources.add(name)
+  loadedListeners.forEach((listener) => listener())
+}
+
+function isResourceLoaded(name: string): boolean {
+  return loadedResources.has(name) || readCache(name) !== null
+}
+
+/** true dès que la ressource `name` a une donnée affichable (cache local ou réseau). */
+export function useResourceLoaded(name: string): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      loadedListeners.add(listener)
+      return () => {
+        loadedListeners.delete(listener)
+      }
+    },
+    () => isResourceLoaded(name),
+    () => false,
+  )
+}
+
+/** Noms de ressources exposés pour useResourceLoaded / préchargement. */
+export const resourceNames = {
+  texts: 'texts',
+  blogPosts: 'blog-posts',
+  zones: 'delivery-zones',
+  payments: 'payment-methods',
+  media: (kind?: MediaKind) => `media:${kind ?? 'all'}`,
+  products: (type?: string, featuredOnly = false) =>
+    `products:${type ?? 'all'}:${featuredOnly ? 'featured' : 'catalog'}`,
+  product: (id: string) => `product:${id}`,
+  blogPost: (slug: string) => `blog-post:${slug}`,
+  typeVisibility: 'type-visibility',
+} as const
+
+/* ---------------------- Visibilité des types de produits ------------------ */
+
+const HIDDEN_TYPES_KEY = 'hidden_product_types'
+
+/** Types masqués par défaut sur le site public (réversible depuis l'admin). */
+export const DEFAULT_HIDDEN_TYPES: ProductType[] = ['poules', 'poussins', 'canards', 'materiel']
+
+/** Parse la valeur site_texts « hidden_product_types » (JSON) ; défaut = les 4 types non-œufs. */
+export function parseHiddenTypes(raw: string | null | undefined): ProductType[] {
+  try {
+    const parsed = JSON.parse(raw ?? 'null')
+    if (Array.isArray(parsed)) {
+      return parsed.filter((t): t is ProductType =>
+        PRODUCT_TYPES.some((pt) => pt.value === t),
+      )
+    }
+  } catch {
+    /* valeur invalide : on retombe sur le défaut */
+  }
+  return DEFAULT_HIDDEN_TYPES
+}
+
+async function fetchHiddenTypes(): Promise<ProductType[]> {
+  if (!supabase) return DEFAULT_HIDDEN_TYPES
+  const { data } = await supabase
+    .from('site_texts')
+    .select('value')
+    .eq('key', HIDDEN_TYPES_KEY)
+    .maybeSingle()
+  return parseHiddenTypes(data?.value as string | undefined)
+}
+
+/** Types de produits masqués sur le site public (cache localStorage comme les autres ressources). */
+export function useHiddenProductTypes(): ProductType[] {
+  return useCachedResource<ProductType[]>(resourceNames.typeVisibility, fetchHiddenTypes, [], DEFAULT_HIDDEN_TYPES)
+}
+
+/** Persiste les types masqués (admin) puis vide le cache pour une diffusion immédiate. */
+export async function saveHiddenTypes(types: ProductType[]) {
+  if (!supabase) return
+  await supabase
+    .from('site_texts')
+    .upsert({ key: HIDDEN_TYPES_KEY, value: JSON.stringify(types) })
+  invalidateSiteCache()
+}
+
+/* ------------------------- Hooks avec cache local ------------------------ */
+
+function useCachedResource<T>(name: string, fetcher: () => Promise<T>, deps: unknown[], fallback: T): T {
+  const lastRef = useRef<{ name: string; value: T } | null>(null)
+  const [data, setData] = useState<T>(() => {
+    const cached = readCache<T>(name)
+    lastRef.current = cached !== null ? { name, value: cached } : null
+    return cached ?? fallback
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    const cached = readCache<T>(name)
+    if (cached !== null && lastRef.current?.name !== name) {
+      lastRef.current = { name, value: cached }
+      setData(cached)
+    }
+    cachedFetch(name, fetcher)
+      .then((result) => {
+        if (cancelled) return
+        const prev = lastRef.current?.name === name ? lastRef.current.value : undefined
+        if (prev === undefined || JSON.stringify(prev) !== JSON.stringify(result)) {
+          lastRef.current = { name, value: result }
+          setData(result)
+        }
+      })
+      .catch(() => {
+        /* réseau indisponible : on garde le cache ou le fallback */
+      })
+      .finally(() => markResourceLoaded(name))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+
+  return data
+}
+
+/* ------------------------------ Fetchers --------------------------------- */
+
+async function fetchSiteTexts(): Promise<SiteTexts> {
+  if (!supabase) return DEFAULT_TEXTS
+  const { data } = await supabase.from('site_texts').select('key, value')
+  const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) as Partial<SiteTexts>
+  return { ...DEFAULT_TEXTS, ...map }
+}
+
+async function fetchMedia(kind?: MediaKind): Promise<MediaItem[]> {
+  if (!supabase) return []
+  let q = supabase.from('media').select('*').eq('active', true).order('sort_order')
+  if (kind) q = q.eq('kind', kind)
+  const { data, error } = await q
+  if (error) console.warn('useMedia:', error.message)
+  return (data ?? []) as MediaItem[]
+}
+
+async function fetchProducts(type?: string, featuredOnly = false): Promise<Product[]> {
+  if (!supabase) return []
+  const hidden = await cachedFetch(resourceNames.typeVisibility, fetchHiddenTypes)
+  let q = supabase.from('products').select('*').eq('status', 'actif').order('created_at', { ascending: false })
+  if (type) q = q.eq('type', type)
+  const { data } = await q
+  const items = ((data ?? []) as Product[]).filter((p) => !hidden.includes(p.type))
+  return featuredOnly ? items.filter((p) => p.featured) : items
+}
+
+async function fetchProduct(id: string | undefined): Promise<Product | null> {
+  if (!supabase || !id) return null
+  const hidden = await cachedFetch(resourceNames.typeVisibility, fetchHiddenTypes)
+  const { data } = await supabase.from('products').select('*').eq('id', id).maybeSingle()
+  const product = (data as Product) ?? null
+  // Un produit d'un type masqué est introuvable publiquement.
+  return product && !hidden.includes(product.type) ? product : null
+}
+
+async function fetchBlogPosts(): Promise<BlogPost[]> {
+  if (!supabase) return []
+  const { data } = await supabase.from('blog_posts').select('*').eq('published', true).order('created_at', { ascending: false })
+  return (data ?? []) as BlogPost[]
+}
+
+async function fetchBlogPost(slug: string | undefined): Promise<BlogPost | null> {
+  if (!supabase || !slug) return null
+  const { data } = await supabase.from('blog_posts').select('*').eq('slug', slug).maybeSingle()
+  return (data as BlogPost) ?? null
+}
+
+async function fetchDeliveryZones(): Promise<DeliveryZone[]> {
+  if (!supabase) return []
+  const { data } = await supabase.from('delivery_zones').select('*').eq('active', true).order('sort_order')
+  return (data ?? []) as DeliveryZone[]
+}
+
+async function fetchPaymentMethods(): Promise<PaymentMethod[]> {
+  if (!supabase) return []
+  const { data } = await supabase.from('payment_methods').select('*').eq('active', true).order('sort_order')
+  return (data ?? []) as PaymentMethod[]
+}
+
 /* --------------------------------- Hooks --------------------------------- */
 
 function useFetch<T>(fetcher: () => Promise<T>, deps: unknown[] = []): { data: T | null; loading: boolean } {
@@ -64,82 +331,104 @@ function useFetch<T>(fetcher: () => Promise<T>, deps: unknown[] = []): { data: T
 }
 
 export function useSiteTexts(): SiteTexts {
-  const { data } = useFetch(async () => {
-    if (!supabase) return null
-    const { data } = await supabase.from('site_texts').select('key, value')
-    const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) as Partial<SiteTexts>
-    return { ...DEFAULT_TEXTS, ...map }
-  }, [])
-  return data ?? DEFAULT_TEXTS
+  return useCachedResource<SiteTexts>(resourceNames.texts, fetchSiteTexts, [], DEFAULT_TEXTS)
 }
 
 export function useMedia(kind?: MediaKind): MediaItem[] {
-  const { data } = useFetch(async () => {
-    if (!supabase) return []
-    let q = supabase.from('media').select('*').eq('active', true).order('sort_order')
-    if (kind) q = q.eq('kind', kind)
-    const { data, error } = await q
-    if (error) console.warn('useMedia:', error.message)
-    return (data ?? []) as MediaItem[]
-  }, [kind])
-  return data ?? []
+  return useCachedResource<MediaItem[]>(resourceNames.media(kind), () => fetchMedia(kind), [kind], [])
 }
 
 export function useProducts(type?: string, featuredOnly = false): Product[] {
-  const { data } = useFetch(async () => {
-    if (!supabase) return []
-    let q = supabase.from('products').select('*').eq('status', 'actif').order('created_at', { ascending: false })
-    if (type) q = q.eq('type', type)
-    const { data } = await q
-    const items = (data ?? []) as Product[]
-    return featuredOnly ? items.filter((p) => p.featured) : items
-  }, [type, featuredOnly])
-  return data ?? []
+  return useCachedResource<Product[]>(
+    resourceNames.products(type, featuredOnly),
+    () => fetchProducts(type, featuredOnly),
+    [type, featuredOnly],
+    [],
+  )
 }
 
 export function useProduct(id: string | undefined): Product | null {
-  const { data } = useFetch(async () => {
-    if (!supabase || !id) return null
-    const { data } = await supabase.from('products').select('*').eq('id', id).maybeSingle()
-    return (data as Product) ?? null
-  }, [id])
-  return data
+  return useCachedResource<Product | null>(
+    id ? resourceNames.product(id) : 'product:none',
+    () => fetchProduct(id),
+    [id],
+    null,
+  )
 }
 
 export function useBlogPosts(): BlogPost[] {
-  const { data } = useFetch(async () => {
-    if (!supabase) return []
-    const { data } = await supabase.from('blog_posts').select('*').eq('published', true).order('created_at', { ascending: false })
-    return (data ?? []) as BlogPost[]
-  }, [])
-  return data ?? []
+  return useCachedResource<BlogPost[]>(resourceNames.blogPosts, fetchBlogPosts, [], [])
 }
 
 export function useBlogPost(slug: string | undefined): BlogPost | null {
-  const { data } = useFetch(async () => {
-    if (!supabase || !slug) return null
-    const { data } = await supabase.from('blog_posts').select('*').eq('slug', slug).maybeSingle()
-    return (data as BlogPost) ?? null
-  }, [slug])
-  return data
+  return useCachedResource<BlogPost | null>(
+    slug ? resourceNames.blogPost(slug) : 'blog-post:none',
+    () => fetchBlogPost(slug),
+    [slug],
+    null,
+  )
 }
 
 export function useDeliveryZones(): DeliveryZone[] {
-  const { data } = useFetch(async () => {
-    if (!supabase) return []
-    const { data } = await supabase.from('delivery_zones').select('*').eq('active', true).order('sort_order')
-    return (data ?? []) as DeliveryZone[]
-  }, [])
-  return data ?? []
+  return useCachedResource<DeliveryZone[]>(resourceNames.zones, fetchDeliveryZones, [], [])
 }
 
 export function usePaymentMethods(): PaymentMethod[] {
-  const { data } = useFetch(async () => {
-    if (!supabase) return []
-    const { data } = await supabase.from('payment_methods').select('*').eq('active', true).order('sort_order')
-    return (data ?? []) as PaymentMethod[]
-  }, [])
-  return data ?? []
+  return useCachedResource<PaymentMethod[]>(resourceNames.payments, fetchPaymentMethods, [], [])
+}
+
+/* --------------------------- Préchargement ------------------------------- */
+
+/**
+ * Précharge en parallèle toutes les données de l'accueil (textes, produits,
+ * médias, zones, paiements, blog) et réchauffe les premières images.
+ * Les hooks utilisent les mêmes ressources : aucune requête en double.
+ */
+export function prefetchPublicData() {
+  const jobs: Promise<unknown>[] = [
+    cachedFetch(resourceNames.texts, fetchSiteTexts),
+    cachedFetch(resourceNames.typeVisibility, fetchHiddenTypes),
+    cachedFetch(resourceNames.zones, fetchDeliveryZones),
+    cachedFetch(resourceNames.payments, fetchPaymentMethods),
+    cachedFetch(resourceNames.blogPosts, fetchBlogPosts),
+    cachedFetch(resourceNames.products(), fetchProducts),
+    ...(['hero_video', 'story_video', 'strip_photo', 'cta_image'] as MediaKind[]).map((kind) =>
+      cachedFetch(resourceNames.media(kind), () => fetchMedia(kind)),
+    ),
+  ]
+
+  const logoJob = cachedFetch(resourceNames.media('logo'), () => fetchMedia('logo'))
+  jobs.push(logoJob)
+
+  void cachedFetch(resourceNames.products(), fetchProducts).then((items) => {
+    items.slice(0, 6).forEach((p) => {
+      const url = p.images[0]
+      if (url) {
+        const img = new Image()
+        img.src = url
+      }
+    })
+  })
+
+  void logoJob.then((items) => {
+    const url = items[0]?.url
+    if (url) {
+      const img = new Image()
+      img.src = url
+    }
+  })
+
+  void Promise.all(jobs).catch(() => {})
+}
+
+/** Précharge la fiche produit et sa première image (survol / toucher d'une carte). */
+export function preloadProduct(product: Product) {
+  void cachedFetch(resourceNames.product(product.id), () => fetchProduct(product.id)).catch(() => {})
+  const first = product.images[0]
+  if (first) {
+    const img = new Image()
+    img.src = first
+  }
 }
 
 /* ------------------------------ Admin hooks ------------------------------- */
@@ -246,6 +535,7 @@ export async function addMedia(kind: MediaKind, url: string): Promise<MediaItem>
     .select()
     .single()
   if (error) throw new Error(`Enregistrement refusé : ${error.message}`)
+  invalidateSiteCache()
   return data as MediaItem
 }
 
@@ -255,12 +545,14 @@ export async function deleteMedia(id: string, url: string) {
   if (error) throw new Error(`Suppression refusée : ${error.message}`)
   const path = url.split('/media/')[1]
   if (path) await supabase.storage.from('media').remove([path])
+  invalidateSiteCache()
 }
 
 export async function setMediaActive(id: string, active: boolean) {
   if (!supabase) throw new Error('Supabase non configuré')
   const { error } = await supabase.from('media').update({ active }).eq('id', id)
   if (error) throw new Error(`Mise à jour refusée : ${error.message}`)
+  invalidateSiteCache()
 }
 
 export interface MediaTestResult {
@@ -314,6 +606,7 @@ export async function reorderMedia(id: string, dir: -1 | 1, kind: MediaKind) {
   const current = all[idx]
   await supabase.from('media').update({ sort_order: swap.sort_order }).eq('id', current.id)
   await supabase.from('media').update({ sort_order: current.sort_order }).eq('id', swap.id)
+  invalidateSiteCache()
 }
 
 export function useAdminData() {
@@ -377,6 +670,7 @@ export async function saveTexts(values: Record<string, string>) {
   for (const [key, value] of Object.entries(values)) {
     await supabase.from('site_texts').upsert({ key, value })
   }
+  invalidateSiteCache()
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus) {
@@ -402,6 +696,31 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
     }
   }
   await supabase.from('orders').update({ status }).eq('id', id)
+  invalidateSiteCache()
+}
+
+/** Admin uniquement (RLS) : marque la commande comme payée avec sa référence Mobile Money. */
+export async function markOrderPaid(id: string, paymentRef?: string | null) {
+  if (!supabase) return
+  await supabase
+    .from('orders')
+    .update({
+      payment_status: 'paye',
+      payment_ref: paymentRef?.trim() || null,
+      paid_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  invalidateSiteCache()
+}
+
+/** Admin uniquement (RLS) : annule l'enregistrement du paiement. */
+export async function cancelOrderPayment(id: string) {
+  if (!supabase) return
+  await supabase
+    .from('orders')
+    .update({ payment_status: 'non_paye', payment_ref: null, paid_at: null })
+    .eq('id', id)
+  invalidateSiteCache()
 }
 
 /* ------------------------- Mutations admin (suite) ------------------------ */
@@ -411,11 +730,13 @@ export async function upsertProduct(p: Partial<Product>) {
   if (p.id) {
     const { error } = await supabase.from('products').update(p).eq('id', p.id)
     if (error) throw error
+    invalidateSiteCache()
     return p.id
   }
   const { data, error } = await supabase.from('products').insert({
     name: '',
     type: 'oeufs',
+    race: '',
     price_fcfa: 0,
     stock: 0,
     status: 'actif',
@@ -425,6 +746,7 @@ export async function upsertProduct(p: Partial<Product>) {
     ...p,
   }).select('id').single()
   if (error) throw error
+  invalidateSiteCache()
   return data.id as string
 }
 
@@ -433,6 +755,7 @@ export async function deleteProduct(id: string, imageUrls: string[]) {
   await supabase.from('products').delete().eq('id', id)
   const paths = imageUrls.map((u) => u.split('/media/')[1]).filter(Boolean)
   if (paths.length) await supabase.storage.from('media').remove(paths)
+  invalidateSiteCache()
 }
 
 export async function saveZone(z: Partial<DeliveryZone>) {
@@ -442,16 +765,19 @@ export async function saveZone(z: Partial<DeliveryZone>) {
   } else {
     await supabase.from('delivery_zones').insert({ fee_fcfa: 0, active: true, sort_order: 99, ...z })
   }
+  invalidateSiteCache()
 }
 
 export async function deleteZone(id: string) {
   if (!supabase) return
   await supabase.from('delivery_zones').delete().eq('id', id)
+  invalidateSiteCache()
 }
 
 export async function savePayment(p: Partial<PaymentMethod>) {
   if (!supabase || !p.id) return
   await supabase.from('payment_methods').update({ active: p.active, label: p.label, details: p.details }).eq('id', p.id)
+  invalidateSiteCache()
 }
 
 export async function upsertBlogPost(p: Partial<BlogPost>) {
@@ -469,6 +795,7 @@ export async function upsertBlogPost(p: Partial<BlogPost>) {
   if (p.id) {
     const { error } = await supabase.from('blog_posts').update(payload).eq('id', p.id)
     if (error) throw error
+    invalidateSiteCache()
     return p.id
   }
   const { data, error } = await supabase.from('blog_posts').insert({
@@ -479,6 +806,7 @@ export async function upsertBlogPost(p: Partial<BlogPost>) {
     ...payload,
   }).select('id').single()
   if (error) throw error
+  invalidateSiteCache()
   return data.id as string
 }
 
@@ -532,4 +860,5 @@ export async function deleteBlogPost(id: string, imageUrl?: string | null) {
     const path = imageUrl.split('/media/')[1]
     if (path) await supabase.storage.from('media').remove([path])
   }
+  invalidateSiteCache()
 }

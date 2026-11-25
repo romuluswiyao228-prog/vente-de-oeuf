@@ -6,7 +6,8 @@ import SmartImg from '../components/SmartImg'
 import ProductCard, { typeLabel } from '../components/ProductCard'
 import { useCart } from '../lib/cart'
 import { useSeo } from '../lib/seo'
-import { useDeliveryZones, usePaymentMethods, useProduct, useProducts, useSiteTexts, orderMessage, whatsappLink, formatPrice } from '../lib/store'
+import { resourceNames, useDeliveryZones, usePaymentMethods, useProduct, useProducts, useResourceLoaded, useSiteTexts, orderMessage, whatsappLink, formatPrice } from '../lib/store'
+import Skeleton from '../components/Skeleton'
 
 export default function AnnonceDetail() {
   const { id } = useParams()
@@ -20,6 +21,7 @@ export default function AnnonceDetail() {
   const [activeImage, setActiveImage] = useState(0)
   const [added, setAdded] = useState(false)
   const { add } = useCart()
+  const productLoaded = useResourceLoaded(id ? resourceNames.product(id) : 'product:none')
 
   useSeo(product?.name, product?.description)
 
@@ -30,6 +32,20 @@ export default function AnnonceDetail() {
   }, [product?.id, product?.stock])
 
   if (!product) {
+    if (!productLoaded) {
+      return (
+        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2" aria-hidden="true">
+          <Skeleton className="aspect-[4/3] rounded-[2rem]" />
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-2/3" />
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-12 w-44 rounded-full" />
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="mx-auto max-w-3xl px-4 py-24 text-center">
         <h1 className="font-display text-3xl font-semibold text-bark">Produit introuvable</h1>

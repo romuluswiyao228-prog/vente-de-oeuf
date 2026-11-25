@@ -1,15 +1,31 @@
 import { Link, useParams } from 'react-router-dom'
 import Reveal from '../components/Reveal'
 import SmartImg from '../components/SmartImg'
-import { useBlogPost } from '../lib/store'
+import { resourceNames, useBlogPost, useResourceLoaded } from '../lib/store'
 import { useSeo } from '../lib/seo'
+import Skeleton from '../components/Skeleton'
 
 export default function BlogArticle() {
   const { slug } = useParams()
   const post = useBlogPost(slug)
+  const postLoaded = useResourceLoaded(slug ? resourceNames.blogPost(slug) : 'blog-post:none')
   useSeo(post?.title, post?.excerpt)
 
   if (!post) {
+    if (!postLoaded) {
+      return (
+        <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6" aria-hidden="true">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="mt-6 h-10 w-4/5" />
+          <Skeleton className="mt-8 aspect-[16/9] rounded-[2rem]" />
+          <div className="mt-8 space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="mx-auto max-w-3xl px-4 py-24 text-center">
         <h1 className="font-display text-3xl font-semibold text-bark">Article introuvable</h1>

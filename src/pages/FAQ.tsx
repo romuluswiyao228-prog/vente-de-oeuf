@@ -22,12 +22,12 @@ const faqs = [
     a: 'Oui, pour la catégorie « Œufs fécondés », chaque lot est fertilisé et la date de ponte est indiquée. Un taux d’éclosion n’est toutefois jamais garanti à 100 % — c’est le propre de l’incubation.',
   },
   {
-    q: 'Comment se passe la livraison des animaux vivants ?',
-    a: 'Les poussins et volailles sont remis en retrait sur place ou livrés selon la zone, dans des conditions adaptées. Contactez-nous sur WhatsApp avant de commander pour convenir des modalités.',
+    q: 'Comment conserver les œufs fertiles avant l’incubation ?',
+    a: 'Conservez-les pointus vers le bas, dans un endroit frais et stable, idéalement entre 12 et 18 °C. Évitez les secousses et ne les lavez pas.',
   },
   {
-    q: 'Proposez-vous des couveuses et du matériel ?',
-    a: 'Oui, retrouvez dans la catégorie « Matériel » les couveuses, mangeoires et accessoires pour bien démarrer votre basse-cour.',
+    q: 'Quelle race choisir pour démarrer ?',
+    a: 'Les races disponibles sont listées sur le catalogue, avec le nombre d’œufs en stock pour chacune. Marans et Issa Brown sont des valeurs sûres pour débuter.',
   },
 ]
 

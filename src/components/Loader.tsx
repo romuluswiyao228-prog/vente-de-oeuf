@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { resourceNames, useResourceLoaded, useSiteTexts } from '../lib/store'
 
 /** Écran de chargement initial : œuf qui balance + poussin qui pop, puis fondu de sortie. */
 const SESSION_KEY = 'lb-loader-seen'
+/** Filet de sécurité si le réseau ne répond jamais. */
+const MAX_WAIT_MS = 8000
 
 export default function Loader() {
   // N'afficher le loader qu'une fois par session (sessionStorage)
@@ -13,6 +16,11 @@ export default function Loader() {
     }
   })
   const [leaving, setLeaving] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
+  // Déclenche (ou mutualise) la requête des textes pour que « prêt » soit fiable
+  // même si l'utilisateur arrive sur une page qui n'appelle pas useSiteTexts.
+  useSiteTexts()
+  const textsReady = useResourceLoaded(resourceNames.texts)
 
   useEffect(() => {
     try {
@@ -20,14 +28,21 @@ export default function Loader() {
     } catch {
       /* ignore */
     }
-    if (!visible) return
-    const t1 = setTimeout(() => setLeaving(true), 1400)
-    const t2 = setTimeout(() => setVisible(false), 1900)
+    const timeout = setTimeout(() => setTimedOut(true), MAX_WAIT_MS)
+    return () => clearTimeout(timeout)
+  }, [])
+
+  const done = textsReady || timedOut
+
+  useEffect(() => {
+    if (!visible || !done) return
+    const t1 = setTimeout(() => setLeaving(true), 250)
+    const t2 = setTimeout(() => setVisible(false), 800)
     return () => {
       clearTimeout(t1)
       clearTimeout(t2)
     }
-  }, [visible])
+  }, [visible, done])
 
   if (!visible) return null
 
